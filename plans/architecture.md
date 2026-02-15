@@ -8,66 +8,70 @@ Refer to items by section and number (e.g. "1.3" or "Recording Q3").
 
 ## 1. Recording & Capture
 
-- [ ] 1. Chunk/segment duration — Decide fixed duration for "time-chunked" segments (e.g. 30s, 1m, 5m). Trade-off: shorter = finer recall granularity and more segment metadata; longer = fewer files and possibly simpler indexing. Document the choice and rationale.
-- [ ] 2. Segment boundaries — Are segment boundaries strict (e.g. every 60s wall-clock) or best-effort (e.g. keyframe-aligned)? Affects how `--from`/`--to` map to files and export stitching.
-- [ ] 3. Frame rate and resolution — Target FPS (e.g. 1, 5, 15, 30) and resolution (full display, scaled, per-display). Define defaults and whether they are user-configurable; impact on storage and OCR quality.
-- [ ] 4. Multiple displays — Behaviour with multiple monitors: single combined capture, primary only, or user choice (e.g. `--display 0`). How this is represented in the index and in export.
-- [ ] 5. Window vs full-screen capture — ScreenCaptureKit supports both. Decide default (likely full screen for "rewind-like") and whether to support window/app filtering for privacy or focus.
-- [ ] 6. Audio — Sync strategy (e.g. same segment boundary as video, or separate audio chunks with timestamps). Sample rate and format for storage and for STT.
-- [ ] 7. Capture during lock/sleep — Policy when display is locked or machine is sleeping: pause recording, stop, or keep last frame (and document behaviour).
-- [ ] 8. Permissions — Screen Recording (and Microphone if audio) are required. Define: how to detect missing permissions, what error messages to show, and whether the daemon backs off or retries when permission is revoked mid-session.
-- [ ] 9. Recording identity — Is there a single "current session" or multiple named sessions (e.g. `tmrc record --session work`)? Affects storage layout and CLI semantics.
+- [x] 1. Chunk/segment duration — **Event-based recording**, not fixed-duration segments. "Time" is the sample rate for parsing events. Default sample rate: **32.2 ms** (≈ 30 FPS). Configurable via `config.yaml` → `sample_rate_ms`. Segment/chunk boundaries are driven by events and this sample rate; exact storage layout TBD in Storage section.
+- [x] 2. Segment boundaries — **Event-based segmentation.** Events (e.g. window show, cursor move) are sampled at the configured rate (default 32.2 ms). **Minimum recordable unit:** one event always yields **at least one 32.2 ms clip**; even with no further interactions we record that clip and flush when the next frame has no events. A segment is flushed/synced to DB when **there are no further events in the next frame**. Example: cursor moving over 1 s → ~31 events, then flush; single "window show" with no further changes → one 32.2 ms clip, then flush. "DB" used as placeholder until concrete storage is chosen.
+- [x] 3. Frame rate and resolution — Default capture/parse rate is **32.2 ms** (30 FPS), configurable via `config.yaml` (`sample_rate_ms`). Resolution (full display, scaled, per-display) and impact on storage/OCR TBD.
+- [x] 4. Multiple displays — Configurable in **config.yaml** (e.g. `display`). **Default: main display only.** Other options (combined, or per-display index) TBD. Representation in index and export follows the chosen display source.
+- [x] 5. Window vs full-screen capture — **Configurable in config.yaml** (e.g. `capture_mode`). **Default: full_screen.** Window and app filtering are supported; filtering rules (which window/app) TBD in implementation. ScreenCaptureKit supports both modes.
+- [x] 6. Audio — **Simpler model:** no segmentation for audio. **Default: off**; enable in **config.yaml** (`audio_enabled`). When enabled, audio always records (continuous). For export when audio is enabled: **time-based segments** — **3 hours** per segment; export as **MP3** with **timestamp as base name** of file. Sample rate and format for storage and STT TBD.
+- [x] 7. Capture during lock/sleep — **Configurable in config.yaml** (e.g. `record_when_locked_or_sleeping`). **Default: false** — do not record during lock/sleep (pause or stop). User can enable if needed (rare use case). Document behaviour in both modes.
+- [x] 8. Permissions — **Before recording:** app must request (and obtain) Screen Recording permission, and Microphone if audio is enabled; cannot proceed until granted. **If permission is revoked mid-session:** (1) post a **toast** (macOS notification) to the user, (2) **sync current artifacts to storage**, (3) **quit the app**. No retry or back-off while running; clean exit after flush.
+- [x] 9. Recording identity — **Multiple sessions supported.** Default session name is **"default"** (configurable in config.yaml as `session`; overridable via CLI e.g. `tmrc record --session work`). Storage layout and CLI semantics are per-session. **Session ending:** a session ends when the recording process exits. **On process termination** (e.g. Ctrl+C, Activity Monitor quit, or permission revoked): **sync current artifacts to storage**, then exit. Ensures no data loss on graceful or forced quit.
 
 ---
 
 ## 2. Storage & Retention
 
-- [ ] 1. Storage root — Default directory for recordings and index (e.g. `~/Library/Application Support/tmrc/` or configurable). Document and make overridable (env or config).
-- [ ] 2. Directory layout — Concrete schema: e.g. `YYYY-MM-DD/segment_<id>.<ext>` vs flat with prefixed IDs. Include where sidecar index (and any SQLite/DB) lives.
-- [ ] 3. Retention policy — Max age or max disk usage for auto-deletion. Defaults (e.g. "keep 7 days" or "keep until 50 GB") and whether user can disable or tune.
-- [ ] 4. Disk full / low space — Behaviour when volume is full or below a threshold: stop recording, drop oldest segments, or fail with clear error. Define threshold and user-facing message.
-- [ ] 5. Quota per process — Any cap on total size per "session" or per day to avoid runaway growth (e.g. bug or misconfiguration).
-- [ ] 6. File formats — Container/codec for stored segments (e.g. MP4 with H.264/HEVC). Same as export codec or different (e.g. internal proxy vs export encode)? Impacts re-encode cost for export.
-- [ ] 7. Deduplication — Whether identical or near-identical frames are deduplicated (e.g. static screen for hours). If yes, define strategy and how it interacts with time-based recall.
+- [x] 1. Storage root — **Default: `~/.tmrc/`.** Configurable (e.g. in config.yaml as `storage_root`). Overridable via env or config TBD. Document.
+- [x] 2. Directory layout — **Index:** one **single index file per session**; each entry has its own timestamp. Index file **base name = session name** (e.g. session `default` → index `default.<ext>`, session `work` → `work.<ext>`). Concrete segment schema (e.g. `YYYY-MM-DD/segment_<id>.<ext>` vs flat) and exact index file extension/format TBD.
+- [x] 3. Retention policy — **Session-based.** Both **max age** and **max disk usage** apply per session (no conflict; e.g. keep 7 days *and* cap at 50 GB). **Ring-buffer semantics:** when a new recording must be saved and the limit is reached (e.g. 8th day), **drop the oldest** (e.g. 1st day) and insert the new one; same idea for disk quota (evict oldest segments first). Defaults (e.g. 7 days, 50 GB) and config keys TBD; user can disable or tune.
+- [x] 4. Disk full / low space — **Same abort principle:** when volume is full or below threshold, (1) **sync current artifacts to storage**, (2) **toast** a message to the user, (3) **exit the app**. No silent continue or drop-oldest-for-new. Threshold and exact user-facing message TBD.
+- [x] 5. Quota per process — No hard cap. Provide an **option or subcommand** to **list usage report** to the user (e.g. per session, per day, total). User can monitor and act; avoids need for automatic quota enforcement.
+- [x] 6. File formats — **Storage:** use the **most size-effective** format (e.g. MP4 with HEVC or similar; TBD). **Export:** support **H.264-compatible video** (for compatibility) and **GIF** when the user wants. Re-encode from stored format to H.264 or GIF on export as needed.
+- [x] 7. Deduplication — **Addressed by event-based model:** we only record when events occur (and flush when next frame is quiet); static screen with no events produces no new segments. Explicit frame-level deduplication (e.g. within-segment) **out of scope for v1**.
 
 ---
 
 ## 3. Indexing Pipeline
 
-- [ ] 1. When to index — Real-time (as segments are closed) vs batch (periodic job). Trade-off: latency for "ask" vs CPU/battery and implementation complexity.
-- [ ] 2. OCR engine — Use Vision (VNRecognizeTextRequest) only or allow pluggable backends. Language(s) supported and fallback when OCR fails or returns empty.
-- [ ] 3. OCR granularity — Per-frame, per-segment summary, or keyframes only. How this maps to "search by time" and "search by query."
-- [ ] 4. Speech-to-text — Engine choice (e.g. Apple Speech Framework, or external). Language and model; offline vs online requirement. How audio segments are aligned to segments (timestamps).
-- [ ] 5. Embeddings — If "optional embeddings" are in scope: which model (e.g. small local vs API), scope (per segment, per sentence, per window). Storage format and index type (e.g. vector DB or in-file sidecar).
-- [ ] 6. Index storage format — Single SQLite, per-segment JSON, or hybrid. Schema: segment id, time range, OCR text, STT text, optional embedding refs. Version schema for future migrations.
-- [ ] 7. Index build failure — Retry policy for failed OCR/STT (e.g. transient error). Whether partial index is allowed and how "ask"/export behave when index is missing or stale for a segment.
-- [ ] 8. Index corruption / recovery — How to detect and recover (e.g. rebuild from segments, or mark segment as unindexed and re-run pipeline).
-- [ ] 9. Re-indexing — Support for re-running indexer on existing segments (e.g. after adding embeddings or fixing a bug). Idempotency and overwrite semantics.
+**Indexing/recall mode (two presets):** **Advanced** = best UX: real-time indexing, full OCR, semantic (embeddings), LLM answers, proper multi-match handling, re-indexing; all sub-options configurable, defaults = best. **Normal** = lighter burden: no sub-options exposed; all defaults = lighter (e.g. lighter OCR, keyword-only, template answers, simpler match handling, no embeddings/LLM). Configurable in config (e.g. `index_mode: advanced | normal`). Real-time indexing is must-have for best UX (Advanced); Normal may use real-time with lighter pipeline or lighter schedule TBD.
+
+- [x] 1. When to index — **Advanced:** real-time (index as segments are closed); must-have for best UX. **Normal:** lighter default (real-time with lighter pipeline, or batch; TBD). Trade-off: latency vs CPU/battery; mode choice captures this.
+- [x] 2. OCR engine — **Backend: Vision `VNRecognizeTextRequest` only** (no pluggable backends). **Default languages** in config: `ocr_recognition_languages`: **["en-US", "zh-Hant", "zh-Hans"]**. User can add more locale strings (BCP 47 / Apple locale IDs) in config; comments in config explain how. No auto-detect; languages must be set. **Advanced:** full quality, configurable; **Normal:** lighter default. Fallback when OCR fails or returns empty TBD.
+- [x] 3. OCR granularity — **Default for both modes: per-segment summary** (one OCR result per segment; balanced). **Advanced:** user can configure other granularities (e.g. per-frame, keyframes). **Normal:** no sub-options; always per-segment summary. Maps to "search by time" and "search by query."
+- [x] 4. Speech-to-text — **Apple Speech Framework** (no external STT). Speech/audio is not a primary focus; language, model, offline/online, and alignment of audio to segments (timestamps) TBD in implementation.
+- [ ] 5. Embeddings — **Advanced:** in scope; model, scope, storage configurable; default = best for semantic "ask". **Normal:** not used (keyword-only). Storage format and index type TBD.
+- [x] 6. Index storage format — **Single SQLite per session** (base name = session name, e.g. `default.sqlite`). Schema: segment id, time range, OCR text, STT text, optional embedding refs. Version schema for future migrations TBD.
+- [x] 7. Index build failure — **Partial index allowed.** When OCR/STT fails for a segment, **notify the user** (e.g. toast or status) so they know there was a failure and can review the generated video themselves. "Ask"/export may have no or stale data for that segment; user can still watch the recording. Retry policy (e.g. retry once then mark failed) TBD.
+- [x] 8. Index corruption / recovery — **Recovery = regenerate from source of truth (segment files).** Option A: on detection of corruption, **rebuild index from segments** (re-run pipeline, write new SQLite). Also provide a **user-facing option** to manually **rebuild the index from source of truth** (e.g. subcommand or flag); same pipeline as recovery. Applies to both modes.
+- [x] 9. Re-indexing — **Advanced:** supported (re-run indexer on existing segments; idempotency/overwrite configurable). **Normal:** not exposed or lighter default. Improves UX without re-recording.
 
 ---
 
 ## 4. Recall: "Ask" (Natural Language → Text)
 
-- [ ] 1. Query scope — Default time range for "ask" (e.g. last 24h, last 7 days, or all). Configurable and/or flags like `--since`, `--until`.
-- [ ] 2. Retrieval path — Keyword search only (OCR/STT text) vs semantic (embeddings) vs hybrid. Decision affects dependency on embedding model and latency.
-- [ ] 3. Answer generation — How the text reply is produced: template (e.g. "Segment X at 14:32: …"), LLM (local or API), or rule-based summarization. If LLM: model, context window, and how to pass retrieved segments.
-- [ ] 4. Citation / time references — Whether every answer includes timestamps or segment IDs for follow-up export; format (e.g. `--from 14:32:00 --to 14:33:15`).
-- [ ] 5. No results — Behaviour when query matches nothing: message wording and whether to suggest broadening time range or query.
-- [ ] 6. Multiple matches — How many segments to return and how to rank (relevance, time). Upper bound to avoid huge replies.
-- [ ] 7. Privacy — Whether "ask" can be restricted to exclude certain apps or time ranges (e.g. no indexing of password manager window). If so, model in index and retrieval.
+Mode (Advanced vs Normal) applies: Advanced = full retrieval + LLM + multi-match handling; Normal = keyword-only, template, lighter defaults.
+
+- [x] 1. Query scope — **Default: last 24h**, configurable in **config.yaml** (e.g. `ask_default_range: 24h`). CLI flags **`--since`** and **`--until`** let the user override the range per invocation.
+- [x] 2. Retrieval path — **Advanced:** semantic (embeddings) or hybrid with keyword; configurable; default = best. **Normal:** keyword-only (OCR/STT text). Mode choice in config.
+- [x] 3. Answer generation — **Advanced:** LLM (local or API); configurable; default = best. **Normal:** template (e.g. "Segment X at 14:32: …"). Model, context window, segment passing TBD for Advanced.
+- [x] 4. Citation / time references — Every answer includes **timestamps** (and/or segment IDs) for follow-up export. **Format: date-time, 24h** (e.g. `2025-02-15 14:32:00`). Use for `--from` / `--until` in export. Applies to both modes. Timezone (e.g. local) TBD if not already specified elsewhere.
+- [x] 5. No results — **Tell the user the truth** (no matches in the given scope). User decides what to do next (e.g. broaden time range, rephrase); no prescribed suggestions required. Applies to both modes.
+- [x] 6. Multiple matches — **Advanced:** configurable; rank by relevance/time, upper bound; default = best UX. **Normal:** lighter default (e.g. fewer segments, simpler ranking). Avoid huge replies.
+- [x] 7. Privacy — **No exclusion options** (no per-app or per–time-range filtering for "ask" or indexing). Enumerating what not to record is impractical. If the user knows it's not a proper moment to record, they **quit the app** themselves. User responsibility.
 
 ---
 
 ## 5. Recall: Export (Time Range or Query → MP4/GIF)
 
-- [ ] 1. Time range semantics — `--from` / `--to`: format (absolute time vs relative like "1h ago"), timezone (local vs UTC), and whether boundaries are inclusive. How sub-segment precision is handled (e.g. request 14:32:00–14:32:30 with 60s segments).
-- [ ] 2. Query-to-export — When export is driven by a query (e.g. "export when I was in Slack"), rule for deriving time range: single best match, N matches (multiple clips), or merged range. CLI surface (e.g. `tmrc export --query "..."`).
-- [ ] 3. Stitching — Export may span multiple segments. Define: decode segments, concat (or re-encode), and handle gaps (e.g. missing segment → skip or insert placeholder).
-- [ ] 4. Export codec and quality — MP4: codec (H.264/HEVC), resolution, bitrate. GIF: palette, resolution, frame rate (often lower). Defaults and flags (e.g. `--quality high`).
-- [ ] 5. GIF limits — GIF is often large and slow. Max duration or size for GIF export; suggest MP4 for long clips if applicable.
-- [ ] 6. Output path — `-o` behaviour: overwrite, uniquify (e.g. append timestamp), or fail if exists. Default output path when `-o` is omitted.
-- [ ] 7. Concurrent exports — Allow multiple `tmrc export` in parallel or serialize (e.g. daemon queue). Resource (CPU/memory) consideration.
-- [ ] 8. Export while recording — Allowed or not; if allowed, ensure segment files are not truncated while being read.
+- [x] 1. Time range semantics — `--from` / `--to`: **both absolute and relative** (e.g. "1h ago"). **Timezone: local time** (user-facing). Boundaries inclusive and sub-segment precision (e.g. request 14:32:00–14:32:30 with variable-length segments) TBD.
+- [x] 2. Query-to-export — When export is driven by a query: **one merged range** — take earliest start and latest end across all matches, export one clip spanning that range (includes gaps between matches). CLI surface: e.g. `tmrc export --query "..."`.
+- [x] 3. Stitching — Export may span multiple segments: **decode** available segments, **concat** (or re-encode) in order. **Gaps:** stitch **all available** segments only; **skip** missing or corrupted segments (do not preserve or include them; output may have time jumps over gaps). No placeholder for missing segments.
+- [x] 4. Export codec and quality — **Default quality: high.** Three levels for advanced users: **low** (720p, ~2 Mbps), **medium** (1080p, ~5 Mbps), **high** (source resolution or 1080p+, ~8 Mbps). MP4: H.264 for compatibility. GIF: same level drives resolution/frame rate; palette TBD. Config: `export_quality: high`. **Audio export:** when `audio_enabled`, 3-hour segments, MP3, timestamp as base name.
+- [x] 5. GIF limits — **GIF is a CLI export option only** (e.g. `--format gif`), not in config.yaml. User explicitly requests GIF when exporting; we assume they know the trade-off (large, slow). No configurable limits or "suggest MP4" in config. Implementation may enforce a reasonable max duration/size to avoid runaway exports; TBD.
+- [x] 6. Output path — **`-o`** (or **`--output-path`**): path for export file. **If file exists: overwrite by default, no warning.** Default output path when `-o` is omitted TBD (e.g. cwd or session/date-based).
+- [x] 7. Concurrent exports — **No limitations;** allow multiple `tmrc export` in parallel. System resource allocation is the natural limit; no daemon queue or serialization.
+- [x] 8. Export while recording — **Allowed.** Implementation must ensure segment files are not read while being written (e.g. only export from closed/flushed segments, or safe read semantics so in-progress segments are excluded or copied safely).
 
 ---
 
@@ -76,7 +80,7 @@ Refer to items by section and number (e.g. "1.3" or "Recording Q3").
 - [ ] 1. Daemon process model — Single process (LaunchAgent) or CLI spawns a child daemon. How the daemon is started (e.g. `launchctl` vs `tmrc record` starts it). Lifecycle: start on login vs on first `tmrc record`.
 - [ ] 2. Daemon discovery — How CLI finds the daemon: Unix socket path, PID file, or XPC. Same machine only; no remote.
 - [ ] 3. tmrc record semantics — Exact meaning: "start recording," "stop recording," "ensure daemon is running," "show status," or combination (e.g. `tmrc record` toggles, `tmrc record --start`/`--stop`). Subcommands or flags to avoid ambiguity.
-- [ ] 4. Configuration — Config file location (e.g. `~/.config/tmrc/config.yaml`) and format. Which options are config-only vs overridable by CLI (e.g. retention, paths, OCR language).
+- [x] 4. Configuration — Config file: **`config.yaml`** in the **project root** (for this repo). First option: **`sample_rate_ms`** (default 32.2, ≈ 30 FPS), with comments in file. For installed CLI (e.g. Homebrew), config location may be overridable or default to e.g. `~/.config/tmrc/config.yaml`; TBD. Which options are config-only vs overridable by CLI TBD (e.g. retention, paths, OCR language).
 - [ ] 5. Logging — Where daemon and CLI log (stderr, file, os_log). Log level and rotation for daemon.
 - [ ] 6. Single instance — Only one recorder per machine (or per user). How to enforce and what error to show if a second instance is attempted.
 - [ ] 7. Upgrade while recording — Policy when binary is replaced (e.g. via Homebrew): daemon keeps running on old binary until restart, or restart on upgrade. Document and optionally add "version" handshake between CLI and daemon.
@@ -96,7 +100,7 @@ Refer to items by section and number (e.g. "1.3" or "Recording Q3").
 
 - [ ] 1. Installation — How the daemon is installed (e.g. `tmrc install` that places LaunchAgent plist and creates dirs). Uninstall / disable recording cleanly.
 - [ ] 2. Health check — Way to verify daemon is running and capturing (e.g. `tmrc status` showing last segment time and disk usage).
-- [ ] 3. Graceful shutdown — On SIGTERM, daemon flushes and closes current segment, then exits. Document and test.
+- [ ] 3. Graceful shutdown — On SIGTERM or SIGINT (e.g. Ctrl+C, Activity Monitor quit), daemon **syncs current artifacts to storage**, then exits. Document and test.
 - [ ] 4. Crash recovery — If daemon crashes, next start: resume from last segment or new session. How partial segments are handled (discard or keep as "incomplete").
 - [ ] 5. Clock changes — Behaviour when system time is adjusted (e.g. NTP or manual): segment timestamps and export time ranges. Prefer monotonic or wall-clock for segment naming.
 - [ ] 6. Timezone / DST — Store and display times in local timezone; document DST transition handling (e.g. ambiguous "2:30" when clock falls back).
@@ -121,6 +125,13 @@ Refer to items by section and number (e.g. "1.3" or "Recording Q3").
 - [ ] 1. Metrics — Optional counters: segments written, index lag, export count. Where they are exposed (e.g. file, or future Prometheus) and whether they are in scope for v1.
 - [ ] 2. Debug mode — `tmrc --debug` or `TMRC_DEBUG=1`: verbose logs, preserve temporary files, or dry-run for export. Document for support.
 - [ ] 3. Reproducibility — Version string in CLI and daemon (`tmrc --version`); same version in logs to help diagnose issues.
+
+---
+
+## Progress (where we left off)
+
+- **Sections 1–5 resolved** (Recording, Storage, Indexing, Ask, Export). **config.yaml** updated with: sample_rate_ms, display, capture_mode, audio_enabled, record_when_locked_or_sleeping, session, storage_root, index_mode, ocr_*, ask_default_range, export_quality.
+- **Next to discuss:** Section 6 CLI & Daemon — Q1 (Daemon process model), then 6.2–6.7, then Sections 7–10.
 
 ---
 
