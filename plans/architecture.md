@@ -77,44 +77,44 @@ Mode (Advanced vs Normal) applies: Advanced = full retrieval + LLM + multi-match
 
 ## 6. CLI & Daemon
 
-- [ ] 1. Daemon process model — Single process (LaunchAgent) or CLI spawns a child daemon. How the daemon is started (e.g. `launchctl` vs `tmrc record` starts it). Lifecycle: start on login vs on first `tmrc record`.
-- [ ] 2. Daemon discovery — How CLI finds the daemon: Unix socket path, PID file, or XPC. Same machine only; no remote.
-- [ ] 3. tmrc record semantics — Exact meaning: "start recording," "stop recording," "ensure daemon is running," "show status," or combination (e.g. `tmrc record` toggles, `tmrc record --start`/`--stop`). Subcommands or flags to avoid ambiguity.
+- [x] 1. Daemon process model — **Two processes:** CLI and a separate child daemon. The daemon is **started by `tmrc record`** (not on login). When the user runs `tmrc record` and the daemon is already running, the CLI **tells the user that recording is in progress** (no second daemon). Lifecycle: first `tmrc record` spawns the daemon; daemon runs until stopped (e.g. `tmrc record --stop`) or process termination.
+- [x] 2. Daemon discovery — **PID file** (e.g. `~/.tmrc/tmrc.pid` or under `storage_root`). CLI reads the PID and checks that the process exists; portable across Unix-like systems (macOS, Linux, BSD). For CLI–daemon communication (status, stop, etc.), use a **Unix socket** at a known path (e.g. under `~/.tmrc/`); also compatible on Unix-like systems. Same machine only; no remote. Exact paths TBD (e.g. configurable via `storage_root`).
+- [x] 3. tmrc record semantics — **Subcommands/flags:** `tmrc record` or `tmrc record --start`: start recording (spawn daemon if needed; if daemon already running, report "already recording"). `tmrc record --stop`: stop recording (stop daemon, sync artifacts, exit). **Status:** "am I recording?" via `tmrc record --status` (or as part of `tmrc status` per Section 8.2). No toggle; explicit `--start`/`--stop` to avoid ambiguity.
 - [x] 4. Configuration — Config file: **`config.yaml`** in the **project root** (for this repo). First option: **`sample_rate_ms`** (default 32.2, ≈ 30 FPS), with comments in file. For installed CLI (e.g. Homebrew), config location may be overridable or default to e.g. `~/.config/tmrc/config.yaml`; TBD. Which options are config-only vs overridable by CLI TBD (e.g. retention, paths, OCR language).
-- [ ] 5. Logging — Where daemon and CLI log (stderr, file, os_log). Log level and rotation for daemon.
-- [ ] 6. Single instance — Only one recorder per machine (or per user). How to enforce and what error to show if a second instance is attempted.
-- [ ] 7. Upgrade while recording — Policy when binary is replaced (e.g. via Homebrew): daemon keeps running on old binary until restart, or restart on upgrade. Document and optionally add "version" handshake between CLI and daemon.
+- [x] 5. Logging — **Log file only** (no stderr-only or os_log). Path: under **`storage_root`** (config.yaml; default `~/.tmrc/`), e.g. `storage_root/log/tmrc.log` or similar; exact name TBD. Daemon and CLI both write to the same log file. **Level:** default **info**; configurable in config (e.g. `log_level: info`) if needed. **Rotation:** time-based; retain **7 days** of logs, then remove or rotate. Implementation details (rotation library or manual) TBD.
+- [x] 6. Single instance — **Daemon only:** exactly one recorder daemon per user (enforced via PID file under user's `storage_root`). When `tmrc record --start` is run and a daemon is already running, CLI reports that recording is already in progress and does not start a second daemon. **Ask and export:** multiple instances allowed—user may run several `tmrc ask` or `tmrc export` invocations concurrently (read-only; no conflict with single daemon). Error message when second daemon is attempted: e.g. "Recording is already in progress" or "Another tmrc recorder is already running"; exact wording TBD.
+- [x] 7. Upgrade while recording — **Policy:** when the binary is replaced (e.g. via Homebrew), the daemon **keeps running on the old binary** until the user restarts it (e.g. `tmrc record --stop` then `tmrc record --start`, or process exit). No automatic restart on upgrade. **No version handshake** between CLI and daemon; document this behaviour so users know they may need to restart the daemon after upgrading to use new behaviour.
 
 ---
 
 ## 7. Security & Privacy
 
-- [ ] 1. Data at rest — Whether recordings or index are encrypted (e.g. FileVault only vs per-file encryption). If not in scope for v1, state explicitly.
-- [ ] 2. Access control — Only the owning user can read recordings/index (rely on filesystem permissions). Any multi-user or "admin can read" requirement?
-- [ ] 3. Secrets in capture — No automatic redaction. Document that users should be aware sensitive data may be in recordings; optional future: exclude region or app.
-- [ ] 4. Audit — Whether to log "who ran ask/export and when" for sensitive environments. If not in scope, state as non-goal.
+- [x] 1. Data at rest — **Encryption is an optional feature**, configurable in **config.yaml**, **disabled by default**. When enabled, encrypt segments with a key derived from the user's password. Key derivation, key storage (e.g. keychain), and UX for password entry are **to-do**; full design and implementation are optional for later. If disabled (default), rely on OS/FileVault only; no per-file encryption.
+- [x] 2. Access control — **Typical case:** only the owning user can read recordings and index. **Rely on filesystem permissions** (e.g. `storage_root` under user's home with appropriate umask/permissions). No multi-user or "admin can read" requirement; document that tmrc does not add extra access control beyond the OS.
+- [x] 3. Secrets in capture — **No automatic redaction** in v1. Document that users should be aware sensitive data may be in recordings and are responsible for when to record (e.g. stop recording before entering passwords). **Optional future:** exclude region or app; out of scope for v1.
+- [x] 4. Audit — **Out of scope for v1.** No audit logging of "who ran ask/export and when." State as **non-goal**; users who need audit trails rely on OS or other tools.
 
 ---
 
 ## 8. Operations & Lifecycle
 
-- [ ] 1. Installation — How the daemon is installed (e.g. `tmrc install` that places LaunchAgent plist and creates dirs). Uninstall / disable recording cleanly.
-- [ ] 2. Health check — Way to verify daemon is running and capturing (e.g. `tmrc status` showing last segment time and disk usage).
-- [ ] 3. Graceful shutdown — On SIGTERM or SIGINT (e.g. Ctrl+C, Activity Monitor quit), daemon **syncs current artifacts to storage**, then exits. Document and test.
-- [ ] 4. Crash recovery — If daemon crashes, next start: resume from last segment or new session. How partial segments are handled (discard or keep as "incomplete").
-- [ ] 5. Clock changes — Behaviour when system time is adjusted (e.g. NTP or manual): segment timestamps and export time ranges. Prefer monotonic or wall-clock for segment naming.
-- [ ] 6. Timezone / DST — Store and display times in local timezone; document DST transition handling (e.g. ambiguous "2:30" when clock falls back).
+- [x] 1. Installation — **`tmrc install`:** create required dirs (e.g. `storage_root`, default `~/.tmrc/`), create default config if missing (e.g. copy or generate `config.yaml` in configured location). No LaunchAgent (daemon starts on first `tmrc record`). **`tmrc uninstall`:** stop the daemon cleanly (sync artifacts, exit), then optionally remove dirs/config per user choice (e.g. flag like `--remove-data` or leave data in place by default). Exact uninstall behaviour (prompt, flags) TBD. Improves UX for setup and teardown.
+- [x] 2. Health check — **Dedicated command `tmrc status`:** verify daemon is running and capturing. Shows: daemon running yes/no (answers "am I recording?"), last segment time, disk usage (e.g. per session or total under `storage_root`). Optional: session name, config summary. Exact output format TBD. Canonical way to check recording and health; `tmrc record --status` (Section 6.3) may be a short alias or omitted in favour of `tmrc status`.
+- [x] 3. Graceful shutdown — **Confirmed:** on SIGTERM or SIGINT (e.g. Ctrl+C, Activity Monitor quit), daemon **syncs current artifacts to storage**, then exits. Aligned with Recording 1.8/1.9. **Document** this behaviour and **test** it so shutdown is reliable.
+- [x] 4. Crash recovery — **New session on next start.** No resume logic; when the daemon starts after a crash, it starts a **new session** (same session name if configured, but no continuation of the previous run). **Partial segments** left on disk from the crashed run: **discard or ignore** (do not use for export/index); implementation may delete incomplete files on startup or leave them unused. No post-crash resume processing.
+- [x] 5. Clock changes — **Monotonic time** for segment boundaries (ordering stable when system clock is adjusted). **Wall-clock** for display and export (user-facing "when did this happen"). Store both as needed: monotonic for ordering/stitching, wall-clock for timestamps in index and CLI output. Document behaviour when NTP or manual clock change occurs.
+- [x] 6. Timezone / DST — **Store and display in local time** (consistent with Ask 4, Export 1). **DST not in scope:** no special consideration for DST transitions or ambiguous times (e.g. "2:30" when clock falls back). Use system local time as-is; document if needed that v1 does not handle DST edge cases.
 
 ---
 
 ## 9. Edge Conditions & Failure Modes
 
-- [ ] 1. Very long sessions — Single continuous recording for days: segment count and index size; any practical limit or warning (e.g. "recording for 7 days").
-- [ ] 2. Permission revoked mid-session — User revokes Screen Recording: daemon gets failure from ScreenCaptureKit. Stop recording, clear error in status, and optionally notify (e.g. os_log or status message). Do not silently continue with blank frames.
-- [ ] 3. Read-only or external volume — If storage root is on a read-only or disconnected volume: fail fast at daemon start or at first write, with clear error.
-- [ ] 4. Export of missing segment — Requested time range references a deleted or missing segment: fail with clear message and optionally suggest nearest available range.
-- [ ] 5. Ask with empty index — No segments indexed yet (e.g. fresh install): friendly message and suggest waiting or checking `tmrc status`.
-- [ ] 6. Duplicate or overlapping segments — If clock skew or bug produces overlapping segment times: policy for export and search (e.g. prefer newer, or merge).
+- [x] 1. Very long sessions — **No limit and no warning.** Rely on retention policy (Section 2.3) and disk space; very long sessions are allowed. No practical cap or "recording for X days" warning.
+- [x] 2. Permission revoked mid-session — **Same as Recording 1.8:** when permission is revoked, (1) **toast** the user, (2) **sync** current artifacts to storage, (3) **quit** the app. Do not silently continue with blank frames.
+- [x] 3. Read-only or external volume — **Fail fast:** if `storage_root` is on a read-only or disconnected volume, detect at daemon start or at first write and **fail with a clear error** (no retry or silent continue). Optionally toast the user. Exact check point (start vs first write) TBD.
+- [x] 4. Export of missing segment — When the requested time range references a **deleted or missing segment**, **fail the export** with a **clear message** (do not produce partial output with gaps). Optionally suggest the nearest available range. Align with or refine Export 5.3 as needed (explicit fail vs skip-missing semantics).
+- [x] 5. Ask with empty index — When no segments are indexed yet (e.g. fresh install): show a **friendly message** and **optionally suggest waiting** (or checking `tmrc status`). Aligned with Ask 4.5 (no results → tell the truth).
+- [x] 6. Duplicate or overlapping segments — **Prefer newer:** when segment times overlap or duplicate (e.g. clock skew or bug), use the **newer** segment for export and search; ignore the older. Consistent policy for stitching and ask.
 - [ ] 7. Resource exhaustion — CPU/memory spike during indexing or export. Consider throttling, queue length limits, or user-configurable concurrency.
 - [ ] 8. Binary rename or copy — If user runs `tmrc` from a copy with different path: daemon discovery and config path should still be deterministic (e.g. by install location or fixed paths, not "current binary path" for config).
 
@@ -131,7 +131,9 @@ Mode (Advanced vs Normal) applies: Advanced = full retrieval + LLM + multi-match
 ## Progress (where we left off)
 
 - **Sections 1–5 resolved** (Recording, Storage, Indexing, Ask, Export). **config.yaml** updated with: sample_rate_ms, display, capture_mode, audio_enabled, record_when_locked_or_sleeping, session, storage_root, index_mode, ocr_*, ask_default_range, export_quality.
-- **Next to discuss:** Section 6 CLI & Daemon — Q1 (Daemon process model), then 6.2–6.7, then Sections 7–10.
+- **Sections 6–8 resolved** (CLI & Daemon, Security & Privacy, Operations & Lifecycle). **Section 9** partially resolved (9.1–9.6 done).
+- **Next to discuss:** Section 9 — Q7 (Resource exhaustion), then 9.8 (Binary rename or copy), then **Section 10** (Observability: Metrics, Debug mode, Reproducibility). **Paused here.**
+- **To-do (optional):** Data-at-rest encryption — when enabled in config, key derivation from user password, key storage (e.g. keychain), and password-entry UX; full design and implementation later.
 
 ---
 
