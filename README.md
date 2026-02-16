@@ -61,7 +61,7 @@ Think “Rewind-like,” but CLI-only and self-hosted/local-first.
 
 ## Status
 
-In progress. Implemented: CLI (record start/stop/status, install, uninstall, status, ask, export), config (YAML + defaults), storage layout and retention, daemon process (start/stop; capture loop with ScreenCaptureKit), SQLite index schema and keyword search, time-range parser, ask engine (empty index and no-matches messaging), export stub (clear error when no segments). Recording pipeline: ScreenCaptureKit capture (main/combined display), event-based segmenter (frame-diff → segment boundaries), segment writer (AVAssetWriter H.264 MP4), segment index upsert and retention eviction. Log file (single file, 7-day rotation), debug/version in logs. Pending: OCR pipeline, export stitch/encode.
+In progress. Implemented: CLI (record start/stop/status, install, uninstall, status, ask, export, rebuild-index), config (YAML + defaults), storage layout and retention, daemon process (start/stop; capture loop with ScreenCaptureKit), SQLite index schema and keyword search, time-range parser, ask engine (empty index, no-matches, citations), **export (stitch MP4/GIF, --from/--to/--query, missing-segment error, quality presets)**. Recording pipeline: ScreenCaptureKit capture (main/combined display), event-based segmenter, segment writer (AVAssetWriter H.264 MP4), segment index upsert and retention eviction; **OCR (Vision) per segment after write**; **permission-revoked detection and toast**; **low-disk check and toast**; **crash recovery (remove incomplete segments on start)**. Log file (single file, 7-day rotation), debug/version in logs. Pending: audio capture, window/app capture mode, optional Unix socket IPC.
 
 ---
 

@@ -119,6 +119,9 @@ struct DaemonRunner {
                 segment.ocrText = ocrText
                 segment.status = "indexed"
                 try indexManager.upsert(segment)
+            } else if frameIndex >= 0 {
+                Logger.shared.log("OCR failed for segment \(segmentId)", level: .warn, category: "daemon")
+                Notifier.notify(title: "tmrc", body: "Indexing failed for a segment. You can still review the recording.")
             }
 
             Logger.shared.log("Segment written \(segmentId) (\(frames.count) frames)", level: .info, category: "daemon")
