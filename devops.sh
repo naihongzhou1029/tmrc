@@ -105,8 +105,19 @@ run_setup() {
   if has_cmd swiftlint; then
     ok "SwiftLint found"
   else
-    warn "SwiftLint not found (optional until lint workflow is enabled)"
-    warn "Install with Homebrew: brew install swiftlint"
+    if has_cmd brew; then
+      ok "Installing SwiftLint via Homebrew..."
+      brew install swiftlint || true
+      if has_cmd swiftlint; then
+        ok "SwiftLint installed"
+      else
+        warn "SwiftLint install failed or not in PATH (full Xcode may be required)"
+        warn "Run manually: brew install swiftlint"
+      fi
+    else
+      warn "SwiftLint not found and Homebrew not available"
+      warn "Install Homebrew from https://brew.sh or run: brew install swiftlint"
+    fi
   fi
 
   if [[ "$failures" -gt 0 ]]; then
