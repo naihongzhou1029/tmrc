@@ -23,12 +23,43 @@ Refer to items by section and number (e.g. "1.3" or "Recording Q3").
 ## 2. Storage & Retention
 
 - [x] 1. Storage root — **Default: `~/.tmrc/`.** Configurable (e.g. in config.yaml as `storage_root`). Overridable via env or config TBD. Document.
-- [x] 2. Directory layout — **Index:** one **single index file per session**; each entry has its own timestamp. Index file **base name = session name** (e.g. session `default` → index `default.<ext>`, session `work` → `work.<ext>`). Concrete segment schema (e.g. `YYYY-MM-DD/segment_<id>.<ext>` vs flat) and exact index file extension/format TBD.
+- [x] 2. Directory layout — **Index:** one **single index file per session** under **`index/`** folder; path `index/<session>.<ext>` (e.g. session `default` → `index/default.sqlite`, session `work` → `index/work.sqlite`). Concrete segment schema (e.g. `segments/YYYY-MM-DD/segment_<id>.<ext>` vs flat) TBD.
 - [x] 3. Retention policy — **Session-based.** Both **max age** and **max disk usage** apply per session (no conflict; e.g. keep 7 days *and* cap at 50 GB). **Ring-buffer semantics:** when a new recording must be saved and the limit is reached (e.g. 8th day), **drop the oldest** (e.g. 1st day) and insert the new one; same idea for disk quota (evict oldest segments first). Defaults (e.g. 7 days, 50 GB) and config keys TBD; user can disable or tune.
 - [x] 4. Disk full / low space — **Same abort principle:** when volume is full or below threshold, (1) **sync current artifacts to storage**, (2) **toast** a message to the user, (3) **exit the app**. No silent continue or drop-oldest-for-new. Threshold and exact user-facing message TBD.
 - [x] 5. Quota per process — No hard cap. Provide an **option or subcommand** to **list usage report** to the user (e.g. per session, per day, total). User can monitor and act; avoids need for automatic quota enforcement.
 - [x] 6. File formats — **Storage:** use the **most size-effective** format (e.g. MP4 with HEVC or similar; TBD). **Export:** support **H.264-compatible video** (for compatibility) and **GIF** when the user wants. Re-encode from stored format to H.264 or GIF on export as needed.
 - [x] 7. Deduplication — **Addressed by event-based model:** we only record when events occur (and flush when next frame is quiet); static screen with no events produces no new segments. Explicit frame-level deduplication (e.g. within-segment) **out of scope for v1**.
+
+### Folder structure (under `storage_root`, default `~/.tmrc/`)
+
+All paths are relative to `storage_root` (configurable; default `~/.tmrc/`). Deterministic: do not depend on binary path (Section 9.8).
+
+| Path | Purpose |
+|------|--------|
+| `tmrc.pid` | Daemon PID file (CLI discovers daemon via this). |
+| `tmrc.sock` | Unix socket for CLI–daemon communication (exact name TBD). |
+| `tmrc.log` | Single log file in root; daemon and CLI both write here. **Single-file rotation** (time-based, 7 days): rotate in place or overwrite; no `log/` subfolder. |
+| `index/<session>.sqlite` | Index per session in **`index/`** folder (e.g. `index/default.sqlite`, `index/work.sqlite`). |
+| **Segments** | Concrete schema TBD: e.g. `segments/YYYY-MM-DD/segment_<id>.<ext>` or flat `segments/<id>.<ext>`. |
+| **Audio** (if enabled) | 3-hour segments, MP3, timestamp as base name; subdir or location TBD. |
+
+**Config (outside `storage_root`):**
+
+- **Development (repo):** `config.yaml` in **project root**.
+- **Installed CLI (e.g. Homebrew):** default `~/.config/tmrc/config.yaml` (TBD); overridable via env.
+
+**Example (default session, `storage_root` = `~/.tmrc/`):**
+
+```
+~/.tmrc/
+├── tmrc.pid
+├── tmrc.sock
+├── tmrc.log           # single file, 7-day rotation in place
+├── index/
+│   └── default.sqlite
+└── segments/          # schema TBD
+    └── ...
+```
 
 ---
 
@@ -41,7 +72,7 @@ Refer to items by section and number (e.g. "1.3" or "Recording Q3").
 - [x] 3. OCR granularity — **Default for both modes: per-segment summary** (one OCR result per segment; balanced). **Advanced:** user can configure other granularities (e.g. per-frame, keyframes). **Normal:** no sub-options; always per-segment summary. Maps to "search by time" and "search by query."
 - [x] 4. Speech-to-text — **Apple Speech Framework** (no external STT). Speech/audio is not a primary focus; language, model, offline/online, and alignment of audio to segments (timestamps) TBD in implementation.
 - [ ] 5. Embeddings — **Advanced:** in scope; model, scope, storage configurable; default = best for semantic "ask". **Normal:** not used (keyword-only). Storage format and index type TBD.
-- [x] 6. Index storage format — **Single SQLite per session** (base name = session name, e.g. `default.sqlite`). Schema: segment id, time range, OCR text, STT text, optional embedding refs. Version schema for future migrations TBD.
+- [x] 6. Index storage format — **Single SQLite per session** in **`index/`** folder (e.g. `index/default.sqlite`, `index/work.sqlite`). Schema: segment id, time range, OCR text, STT text, optional embedding refs. Version schema for future migrations TBD.
 - [x] 7. Index build failure — **Partial index allowed.** When OCR/STT fails for a segment, **notify the user** (e.g. toast or status) so they know there was a failure and can review the generated video themselves. "Ask"/export may have no or stale data for that segment; user can still watch the recording. Retry policy (e.g. retry once then mark failed) TBD.
 - [x] 8. Index corruption / recovery — **Recovery = regenerate from source of truth (segment files).** Option A: on detection of corruption, **rebuild index from segments** (re-run pipeline, write new SQLite). Also provide a **user-facing option** to manually **rebuild the index from source of truth** (e.g. subcommand or flag); same pipeline as recovery. Applies to both modes.
 - [x] 9. Re-indexing — **Advanced:** supported (re-run indexer on existing segments; idempotency/overwrite configurable). **Normal:** not exposed or lighter default. Improves UX without re-recording.
@@ -81,7 +112,7 @@ Mode (Advanced vs Normal) applies: Advanced = full retrieval + LLM + multi-match
 - [x] 2. Daemon discovery — **PID file** (e.g. `~/.tmrc/tmrc.pid` or under `storage_root`). CLI reads the PID and checks that the process exists; portable across Unix-like systems (macOS, Linux, BSD). For CLI–daemon communication (status, stop, etc.), use a **Unix socket** at a known path (e.g. under `~/.tmrc/`); also compatible on Unix-like systems. Same machine only; no remote. Exact paths TBD (e.g. configurable via `storage_root`).
 - [x] 3. tmrc record semantics — **Subcommands/flags:** `tmrc record` or `tmrc record --start`: start recording (spawn daemon if needed; if daemon already running, report "already recording"). `tmrc record --stop`: stop recording (stop daemon, sync artifacts, exit). **Status:** "am I recording?" via `tmrc record --status` (or as part of `tmrc status` per Section 8.2). No toggle; explicit `--start`/`--stop` to avoid ambiguity.
 - [x] 4. Configuration — Config file: **`config.yaml`** in the **project root** (for this repo). First option: **`sample_rate_ms`** (default 32.2, ≈ 30 FPS), with comments in file. For installed CLI (e.g. Homebrew), config location may be overridable or default to e.g. `~/.config/tmrc/config.yaml`; TBD. Which options are config-only vs overridable by CLI TBD (e.g. retention, paths, OCR language).
-- [x] 5. Logging — **Log file only** (no stderr-only or os_log). Path: under **`storage_root`** (config.yaml; default `~/.tmrc/`), e.g. `storage_root/log/tmrc.log` or similar; exact name TBD. Daemon and CLI both write to the same log file. **Level:** default **info**; configurable in config (e.g. `log_level: info`) if needed. **Rotation:** time-based; retain **7 days** of logs, then remove or rotate. Implementation details (rotation library or manual) TBD.
+- [x] 5. Logging — **Log file only** (no stderr-only or os_log). Path: **`storage_root/tmrc.log`** (single file in root; no `log/` subfolder). Daemon and CLI both write to the same log file. **Level:** default **info**; configurable in config (e.g. `log_level: info`) if needed. **Rotation:** single-file, time-based; retain **7 days**, rotate in place or overwrite. Implementation details TBD.
 - [x] 6. Single instance — **Daemon only:** exactly one recorder daemon per user (enforced via PID file under user's `storage_root`). When `tmrc record --start` is run and a daemon is already running, CLI reports that recording is already in progress and does not start a second daemon. **Ask and export:** multiple instances allowed—user may run several `tmrc ask` or `tmrc export` invocations concurrently (read-only; no conflict with single daemon). Error message when second daemon is attempted: e.g. "Recording is already in progress" or "Another tmrc recorder is already running"; exact wording TBD.
 - [x] 7. Upgrade while recording — **Policy:** when the binary is replaced (e.g. via Homebrew), the daemon **keeps running on the old binary** until the user restarts it (e.g. `tmrc record --stop` then `tmrc record --start`, or process exit). No automatic restart on upgrade. **No version handshake** between CLI and daemon; document this behaviour so users know they may need to restart the daemon after upgrading to use new behaviour.
 
@@ -115,24 +146,23 @@ Mode (Advanced vs Normal) applies: Advanced = full retrieval + LLM + multi-match
 - [x] 4. Export of missing segment — When the requested time range references a **deleted or missing segment**, **fail the export** with a **clear message** (do not produce partial output with gaps). Optionally suggest the nearest available range. Align with or refine Export 5.3 as needed (explicit fail vs skip-missing semantics).
 - [x] 5. Ask with empty index — When no segments are indexed yet (e.g. fresh install): show a **friendly message** and **optionally suggest waiting** (or checking `tmrc status`). Aligned with Ask 4.5 (no results → tell the truth).
 - [x] 6. Duplicate or overlapping segments — **Prefer newer:** when segment times overlap or duplicate (e.g. clock skew or bug), use the **newer** segment for export and search; ignore the older. Consistent policy for stitching and ask.
-- [ ] 7. Resource exhaustion — CPU/memory spike during indexing or export. Consider throttling, queue length limits, or user-configurable concurrency.
-- [ ] 8. Binary rename or copy — If user runs `tmrc` from a copy with different path: daemon discovery and config path should still be deterministic (e.g. by install location or fixed paths, not "current binary path" for config).
+- [x] 7. Resource exhaustion — **No extra limits for v1.** Rely on OS and hardware; user accepts load from heavy indexing or multiple exports. Throttling, queue limits, or configurable concurrency may be considered later.
+- [x] 8. Binary rename or copy — **Deterministic paths:** daemon discovery (PID file, Unix socket) and config path must not depend on the current binary path. Use **fixed or deterministic locations** (e.g. `$HOME`, `storage_root` default `~/.tmrc/`, config from env or `~/.config/tmrc/config.yaml`). Renaming or copying the binary does not change behaviour. Exact default config location TBD (e.g. project root for dev, `~/.config/tmrc/` for installed CLI).
 
 ---
 
 ## 10. Observability & Debugging
 
-- [ ] 1. Metrics — Optional counters: segments written, index lag, export count. Where they are exposed (e.g. file, or future Prometheus) and whether they are in scope for v1.
-- [ ] 2. Debug mode — `tmrc --debug` or `TMRC_DEBUG=1`: verbose logs, preserve temporary files, or dry-run for export. Document for support.
-- [ ] 3. Reproducibility — Version string in CLI and daemon (`tmrc --version`); same version in logs to help diagnose issues.
+- [x] 1. Metrics — **Out of scope for v1.** No optional counters (segments written, index lag, export count) or metrics export. Rely on logs and `tmrc status` only. State as non-goal; may revisit (e.g. file or Prometheus) later.
+- [x] 2. Debug mode — **In scope for v1.** Provide **`tmrc --debug`** or **`TMRC_DEBUG=1`** (env var) to enable verbose logging; optionally preserve temporary files or dry-run for export. Document for support. Exact behaviour (log level, which subcommands respect it, temp file retention) TBD in implementation.
+- [x] 3. Reproducibility — **`tmrc --version`** prints a version string (e.g. semver or git describe; format TBD). The **same version** is included in daemon and CLI logs to help diagnose issues.
 
 ---
 
 ## Progress (where we left off)
 
 - **Sections 1–5 resolved** (Recording, Storage, Indexing, Ask, Export). **config.yaml** updated with: sample_rate_ms, display, capture_mode, audio_enabled, record_when_locked_or_sleeping, session, storage_root, index_mode, ocr_*, ask_default_range, export_quality.
-- **Sections 6–8 resolved** (CLI & Daemon, Security & Privacy, Operations & Lifecycle). **Section 9** partially resolved (9.1–9.6 done).
-- **Next to discuss:** Section 9 — Q7 (Resource exhaustion), then 9.8 (Binary rename or copy), then **Section 10** (Observability: Metrics, Debug mode, Reproducibility). **Paused here.**
+- **All sections 1–10 resolved.** Architecture review complete; remaining work is optional (e.g. data-at-rest encryption to-do) and implementation.
 - **To-do (optional):** Data-at-rest encryption — when enabled in config, key derivation from user password, key storage (e.g. keychain), and password-entry UX; full design and implementation later.
 
 ---

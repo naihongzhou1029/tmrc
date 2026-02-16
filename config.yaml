@@ -1,5 +1,5 @@
 # tmrc configuration
-# See README.md and plans/architecture.md for context.
+# See README.md and specs/spec.md for context.
 
 # Sample rate for parsing events (capture/processing interval).
 # Default 32.2 ms ≈ 30 FPS. Time is used as the sample rate for event-based recording.
