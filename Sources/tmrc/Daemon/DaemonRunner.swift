@@ -24,6 +24,7 @@ struct DaemonRunner {
         var indexManager = IndexManager(dbPath: storage.indexPath(session: session))
         let retention = RetentionManager()
 
+        capture.onStreamError = { DaemonEntry.signalReceived = true }
         let started = DispatchSemaphore(value: 0)
         var startError: Error?
         capture.start { err in
@@ -37,7 +38,14 @@ struct DaemonRunner {
         }
         defer { capture.stop() }
 
+        let lowSpaceThreshold: Int64 = 100 * 1024 * 1024 // 100 MB
         while !DaemonEntry.signalReceived {
+            if let free = storage.freeSpace(), free < lowSpaceThreshold {
+                Logger.shared.log("Low disk space (\(free) bytes). Stopping.", level: .error, category: "daemon")
+                Notifier.notify(title: "tmrc", body: "Low disk space. Recording saved and stopped.")
+                DaemonEntry.signalReceived = true
+                break
+            }
             Thread.sleep(forTimeInterval: sampleInterval)
             guard let frame = capture.consumeLatestFrame() else { continue }
             let decision = segmenter.pushFrame(
@@ -91,7 +99,7 @@ struct DaemonRunner {
         let path = (storage.segmentsDirectory as NSString).appendingPathComponent("\(segmentId).mp4")
         do {
             try writer.writeSegment(segmentId: segmentId, frames: frames, outputPath: path)
-            let segment = IndexSegment(
+            var segment = IndexSegment(
                 id: segmentId,
                 session: session,
                 startTime: startTime,
@@ -104,6 +112,15 @@ struct DaemonRunner {
                 status: "pending"
             )
             try indexManager.upsert(segment)
+
+            let ocr = OCRService(recognitionLanguages: config.ocrRecognitionLanguages)
+            let frameIndex = min(frames.count / 2, frames.count - 1)
+            if frameIndex >= 0, let ocrText = ocr.recognize(pixelBuffer: frames[frameIndex].pixelBuffer) {
+                segment.ocrText = ocrText
+                segment.status = "indexed"
+                try indexManager.upsert(segment)
+            }
+
             Logger.shared.log("Segment written \(segmentId) (\(frames.count) frames)", level: .info, category: "daemon")
             _ = try retention.evictIfNeeded(segmentsDirectory: storage.segmentsDirectory)
         } catch {

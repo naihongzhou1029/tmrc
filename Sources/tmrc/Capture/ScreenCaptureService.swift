@@ -6,7 +6,8 @@ import CoreGraphics
 import Darwin
 
 /// Delivers the latest captured frame (and timing) for polling. Thread-safe.
-public final class ScreenCaptureService: NSObject, SCStreamOutput {
+/// Conforms to SCStreamDelegate to detect stream stop (e.g. permission revoked).
+public final class ScreenCaptureService: NSObject, SCStreamOutput, SCStreamDelegate {
     public struct LatestFrame {
         public let pixelBuffer: CVPixelBuffer
         public let presentationTime: CMTime
@@ -17,6 +18,8 @@ public final class ScreenCaptureService: NSObject, SCStreamOutput {
     private let sampleInterval: TimeInterval
     private let displayOption: DisplayOption
     private let queue = DispatchQueue(label: "tmrc.capture.queue")
+    /// Called when stream stops (e.g. permission revoked). Invoked on queue.
+    public var onStreamError: (() -> Void)?
     private var stream: SCStream?
     private var content: SCShareableContent?
     private var latest: (CVPixelBuffer, CMTime, Date, UInt64)?
@@ -73,6 +76,11 @@ public final class ScreenCaptureService: NSObject, SCStreamOutput {
 
     // MARK: - SCStreamOutput
 
+    public func stream(_ stream: SCStream, didStopWithError error: Error) {
+        Notifier.notify(title: "tmrc", body: "Screen capture stopped. If you revoked Screen Recording permission, recording has been saved and the app has quit.")
+        onStreamError?()
+    }
+
     public func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
         guard type == .screen else { return }
         guard let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
@@ -105,7 +113,7 @@ public final class ScreenCaptureService: NSObject, SCStreamOutput {
         config.width = display.width
         config.height = display.height
         config.pixelFormat = kCVPixelFormatType_32BGRA
-        let stream = SCStream(filter: filter, configuration: config, delegate: nil)
+        let stream = SCStream(filter: filter, configuration: config, delegate: self)
         do {
             try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
         } catch {

@@ -40,6 +40,7 @@ struct Main: ParsableCommand {
             RecordCommand.self,
             AskCommand.self,
             ExportCommand.self,
+            RebuildIndexCommand.self,
             InstallCommand.self,
             UninstallCommand.self,
             StatusCommand.self,

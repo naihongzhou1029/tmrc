@@ -32,4 +32,16 @@ struct TimeRangeParserTests {
         let d = parser.parse("2025-02-15 14:32:00")
         #expect(d != nil)
     }
+
+    @Test("Relative 30m ago")
+    func relative30mAgo() throws {
+        let now = Date()
+        let parser = TimeRangeParser(now: now)
+        let m = parser.parse("30m ago")
+        #expect(m != nil)
+        if let d = m {
+            let diff = now.timeIntervalSince(d)
+            #expect(diff >= 29 * 60 && diff <= 31 * 60)
+        }
+    }
 }

@@ -92,6 +92,13 @@ public struct StorageManager {
     public func diskUsage() throws -> Int64 {
         try totalSize(of: storageRoot)
     }
+
+    /// Free space (bytes) on the volume containing storageRoot. Returns nil if unavailable.
+    public func freeSpace() -> Int64? {
+        guard let attrs = try? fileManager.attributesOfFileSystem(forPath: storageRoot),
+              let free = attrs[.systemFreeSize] as? Int64 else { return nil }
+        return free
+    }
 }
 
 public enum StorageError: LocalizedError {

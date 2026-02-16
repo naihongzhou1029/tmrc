@@ -46,6 +46,9 @@ public struct DaemonEntry {
             config = TMRCConfig.default()
         }
 
+        // Crash recovery: remove incomplete segment files (0 or very small) from previous run.
+        try removeIncompleteSegments(storage: storage)
+
         let runner = DaemonRunner(storage: storage, session: session, config: config)
         Logger.shared.log("Daemon entering main loop (sampleInterval=\(config.sampleRateMs)ms)", level: .info, category: "daemon")
         runner.runUntilSignalled()
@@ -53,4 +56,16 @@ public struct DaemonEntry {
     }
 
     static var signalReceived = false
+
+    private static func removeIncompleteSegments(storage: StorageManager) throws {
+        let paths = try storage.listSegmentFiles()
+        let fm = FileManager.default
+        for path in paths {
+            guard let attrs = try? fm.attributesOfItem(atPath: path),
+                  let size = attrs[.size] as? Int64 else { continue }
+            if size < 1024 {
+                try? fm.removeItem(atPath: path)
+            }
+        }
+    }
 }

@@ -66,4 +66,15 @@ public struct IndexManager {
         } ?? 0
         return count == 0
     }
+
+    /// Fetch a single segment by id and session (for rebuild-index).
+    public mutating func segment(id: String, session: String) throws -> IndexSegment? {
+        try connect()
+        return try dbQueue?.read { db in
+            try IndexSegment
+                .filter(IndexSegment.Columns.id == id)
+                .filter(IndexSegment.Columns.session == session)
+                .fetchOne(db)
+        }
+    }
 }

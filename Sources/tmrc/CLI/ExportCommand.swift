@@ -44,17 +44,27 @@ public struct ExportCommand: ParsableCommand {
         )
         let indexManager = IndexManager(dbPath: storage.indexPath(session: config.session))
         let timeParser = TimeRangeParser()
-        let fromDate = from.flatMap { try? timeParser.parse($0) } ?? nil
-        let toDate = to.flatMap { try? timeParser.parse($0) } ?? nil
-        let engine = ExportEngine(storage: storage, indexManager: indexManager, session: config.session)
+        let fromDate = from.flatMap { timeParser.parse($0) }
+        let toDate = to.flatMap { timeParser.parse($0) }
+        let outPath = outputPath ?? defaultExportPath(session: config.session, format: format)
+        let engine = ExportEngine(storage: storage, indexManager: indexManager, session: config.session, quality: config.exportQuality)
         do {
-            try engine.export(from: fromDate, to: toDate, query: query, outputPath: outputPath ?? "", format: format)
-            print("Exported to \(outputPath ?? "")")
+            try engine.export(from: fromDate, to: toDate, query: query, outputPath: outPath, format: format)
+            print("Exported to \(outPath)")
             Logger.shared.log("Export succeeded (session=\(config.session), format=\(format))", level: .info, category: "cli")
         } catch {
             fputs("\(error.localizedDescription)\n", stderr)
             Logger.shared.log("Export failed: \(error.localizedDescription)", level: .error, category: "cli")
             Darwin.exit(1)
         }
+    }
+
+    private func defaultExportPath(session: String, format: String) -> String {
+        let cwd = FileManager.default.currentDirectoryPath
+        let ext = format.lowercased() == "gif" ? "gif" : "mp4"
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+        let stamp = formatter.string(from: Date())
+        return (cwd as NSString).appendingPathComponent("tmrc_export_\(session)_\(stamp).\(ext)")
     }
 }

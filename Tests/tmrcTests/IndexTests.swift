@@ -41,4 +41,30 @@ struct IndexTests {
         _ = try index.isEmpty(session: "default")
         #expect(FileManager.default.fileExists(atPath: dbPath))
     }
+
+    @Test("Index segment by id")
+    func segmentById() throws {
+        let tmp = FileManager.default.temporaryDirectory.path + "/tmrc-index-\(UUID().uuidString)"
+        let dbPath = (tmp as NSString).appendingPathComponent("test.sqlite")
+        try FileManager.default.createDirectory(atPath: tmp, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: tmp) }
+        var index = IndexManager(dbPath: dbPath)
+        let segment = IndexSegment(
+            id: "my-seg",
+            session: "default",
+            startTime: Date(),
+            endTime: Date().addingTimeInterval(5),
+            monotonicStart: 0,
+            monotonicEnd: 1,
+            ocrText: "text",
+            sttText: nil,
+            filePath: "/path/to/seg.mp4",
+            status: "indexed"
+        )
+        try index.upsert(segment)
+        let found = try index.segment(id: "my-seg", session: "default")
+        #expect(found != nil)
+        #expect(found?.id == "my-seg")
+        #expect(found?.ocrText == "text")
+    }
 }
