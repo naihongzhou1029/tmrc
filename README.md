@@ -61,7 +61,7 @@ Think “Rewind-like,” but CLI-only and self-hosted/local-first.
 
 ## Status
 
-Planning. Implementation not yet started.
+In progress. Implemented: CLI (record start/stop/status, install, uninstall, status, ask, export), config (YAML + defaults), storage layout and retention, daemon process (start/stop; capture loop with ScreenCaptureKit), SQLite index schema and keyword search, time-range parser, ask engine (empty index and no-matches messaging), export stub (clear error when no segments). Recording pipeline: ScreenCaptureKit capture (main/combined display), event-based segmenter (frame-diff → segment boundaries), segment writer (AVAssetWriter H.264 MP4), segment index upsert and retention eviction. Log file (single file, 7-day rotation), debug/version in logs. Pending: OCR pipeline, export stitch/encode.
 
 ---
 
@@ -96,3 +96,13 @@ Use a single script, `devops.sh`, as the entry point for local development opera
 - `lint`: runs `swiftlint` when installed.
 - `run`: runs `swift run tmrc` (requires `Package.swift`).
 - `clean`: runs `swift package clean` (requires `Package.swift`).
+
+### Built executable
+
+After `swift build`, the native binary is produced under the Swift Package Manager build directory (not committed; see `.gitignore`). For a **debug** build it is at:
+
+```
+.build/arm64-apple-macosx/debug/tmrc
+```
+
+You can run it directly (e.g. `.build/arm64-apple-macosx/debug/tmrc --version`) or use `swift run tmrc`. For an optimized **release** build, run `swift build -c release`; the binary is then at `.build/arm64-apple-macosx/release/tmrc`.
