@@ -62,3 +62,37 @@ Think “Rewind-like,” but CLI-only and self-hosted/local-first.
 ## Status
 
 Planning. Implementation not yet started.
+
+---
+
+## Development command center
+
+Use a single script, `devops.sh`, as the entry point for local development operations.
+
+### Prerequisites
+
+- macOS (first target), ideally Apple Silicon.
+- Xcode Command Line Tools.
+- Swift toolchain available in `PATH`.
+- Optional: `ffprobe` (for media export test validation), `swiftlint` (for lint workflow).
+
+### Usage
+
+```bash
+./devops.sh help
+./devops.sh setup
+./devops.sh build
+./devops.sh test
+./devops.sh lint
+./devops.sh run
+./devops.sh clean
+```
+
+### Command notes
+
+- `setup` / `check-env`: validates development toolchain and optional tools.
+- `build`: runs `swift build` (requires `Package.swift`).
+- `test`: runs `swift test` (requires `Package.swift`).
+- `lint`: runs `swiftlint` when installed.
+- `run`: runs `swift run tmrc` (requires `Package.swift`).
+- `clean`: runs `swift package clean` (requires `Package.swift`).
