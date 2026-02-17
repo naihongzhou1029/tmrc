@@ -30,7 +30,7 @@ public struct StatusCommand: ParsableCommand {
         let daemon = DaemonManager(storageManager: storage)
         let recording = daemon.isRunning()
         let usage = (try? storage.diskUsage()) ?? 0
-        let usageMB = usage / (1024 * 1024)
+        let usageGB = Double(usage) / (1024 * 1024 * 1024)
         let retention = RetentionManager()
         let maxDiskGB = retention.maxDiskBytes / (1024 * 1024 * 1024)
 
@@ -55,8 +55,8 @@ public struct StatusCommand: ParsableCommand {
             print("Last recording: \(dur)")
         }
         print("Storage: \(storageRoot)")
-        print("Disk usage: \(usageMB) MB")
+        print("Disk usage: \(String(format: "%.1f", usageGB)) GB")
         print("Retention: max age \(retention.maxAgeDays) days, max disk \(maxDiskGB) GB")
-        Logger.shared.log("Status queried (recording=\(recording), usageMB=\(usageMB))", level: .info, category: "cli")
+        Logger.shared.log("Status queried (recording=\(recording), usageGB=\(String(format: "%.1f", usageGB)))", level: .info, category: "cli")
     }
 }
