@@ -78,7 +78,7 @@ public struct IndexManager {
         }
     }
 
-    /// Latest segment by end time (for status last-recording duration).
+    /// Latest segment by end time (for export/query).
     public mutating func lastSegment(session: String) throws -> IndexSegment? {
         try connect()
         return try dbQueue?.read { db in
@@ -86,6 +86,20 @@ public struct IndexManager {
                 .filter(IndexSegment.Columns.session == session)
                 .order(IndexSegment.Columns.endTime.desc)
                 .fetchOne(db)
+        }
+    }
+
+    /// Total recorded duration in seconds (sum of segment durations) for status.
+    public mutating func totalRecordedDuration(session: String) throws -> TimeInterval? {
+        try connect()
+        return try dbQueue?.read { db in
+            let segments = try IndexSegment
+                .filter(IndexSegment.Columns.session == session)
+                .fetchAll(db)
+            guard !segments.isEmpty else { return nil }
+            return segments.reduce(0) { acc, seg in
+                acc + max(0, seg.endTime.timeIntervalSince(seg.startTime))
+            }
         }
     }
 

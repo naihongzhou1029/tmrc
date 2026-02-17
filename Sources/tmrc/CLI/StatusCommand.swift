@@ -41,8 +41,7 @@ public struct StatusCommand: ParsableCommand {
             session = TMRCConfig.defaultSession
         }
         var indexManager = IndexManager(dbPath: storage.indexPath(session: session))
-        let lastRecordingDuration: String? = (try? indexManager.lastSegment(session: session)).map { seg in
-            let secs = max(0, seg.endTime.timeIntervalSince(seg.startTime))
+        let lastRecordingDuration: String? = (try? indexManager.totalRecordedDuration(session: session)).map { secs in
             let total = Int(secs.rounded())
             let days = total / 86400
             let hours = (total % 86400) / 3600
