@@ -78,6 +78,17 @@ public struct IndexManager {
         }
     }
 
+    /// Latest segment by end time (for status last-recording duration).
+    public mutating func lastSegment(session: String) throws -> IndexSegment? {
+        try connect()
+        return try dbQueue?.read { db in
+            try IndexSegment
+                .filter(IndexSegment.Columns.session == session)
+                .order(IndexSegment.Columns.endTime.desc)
+                .fetchOne(db)
+        }
+    }
+
     /// Remove all segment rows (for wipe). Daemon can keep running; new segments will repopulate.
     public mutating func deleteAllSegments() throws {
         try connect()

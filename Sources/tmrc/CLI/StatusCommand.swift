@@ -34,7 +34,27 @@ public struct StatusCommand: ParsableCommand {
         let retention = RetentionManager()
         let maxDiskGB = retention.maxDiskBytes / (1024 * 1024 * 1024)
 
+        let session: String
+        if FileManager.default.fileExists(atPath: configPath), let config = try? ConfigLoader.load(fromFile: configPath) {
+            session = config.session
+        } else {
+            session = TMRCConfig.defaultSession
+        }
+        var indexManager = IndexManager(dbPath: storage.indexPath(session: session))
+        let lastRecordingDuration: String? = (try? indexManager.lastSegment(session: session)).map { seg in
+            let secs = max(0, seg.endTime.timeIntervalSince(seg.startTime))
+            let total = Int(secs.rounded())
+            let days = total / 86400
+            let hours = (total % 86400) / 3600
+            let minutes = (total % 3600) / 60
+            let seconds = total % 60
+            return String(format: "%02d:%02d:%02d:%02d", days, hours, minutes, seconds)
+        }
+
         print("Recording: \(recording ? "yes" : "no")")
+        if let dur = lastRecordingDuration {
+            print("Last recording: \(dur)")
+        }
         print("Storage: \(storageRoot)")
         print("Disk usage: \(usageMB) MB")
         print("Retention: max age \(retention.maxAgeDays) days, max disk \(maxDiskGB) GB")
