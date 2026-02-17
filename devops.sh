@@ -39,14 +39,16 @@ Commands:
   build       Run swift build
   test        Run swift test
   lint        Run SwiftLint (if installed)
-  run         Run tmrc via swift run
+  record      Start recording (tmrc record --start)
+  status      Get recording status (tmrc status)
   clean       Clean Swift package artifacts
   help        Show this help message
 
 Examples:
   ./devops.sh setup
   ./devops.sh build
-  ./devops.sh test
+  ./devops.sh record
+  ./devops.sh status
 EOF
 }
 
@@ -187,10 +189,16 @@ cmd_lint() {
   swiftlint
 }
 
-cmd_run() {
+cmd_record() {
   run_setup
   assert_swift_package
-  swift run tmrc
+  swift run tmrc record --start
+}
+
+cmd_status() {
+  run_setup
+  assert_swift_package
+  swift run tmrc status
 }
 
 cmd_clean() {
@@ -221,8 +229,11 @@ main() {
     lint)
       cmd_lint "$@"
       ;;
-    run)
-      cmd_run "$@"
+    record)
+      cmd_record "$@"
+      ;;
+    status)
+      cmd_status "$@"
       ;;
     clean)
       cmd_clean "$@"
