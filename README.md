@@ -84,18 +84,24 @@ Use a single script, `devops.sh`, as the entry point for local development opera
 ./devops.sh build
 ./devops.sh test
 ./devops.sh lint
-./devops.sh run
+./devops.sh record
+./devops.sh status
+./devops.sh dump
+./devops.sh wipe
 ./devops.sh clean
 ```
 
 ### Command notes
 
-- `setup` / `check-env`: validates development toolchain and optional tools.
-- `build`: runs `swift build` (requires `Package.swift`).
-- `test`: runs `swift test` (requires `Package.swift`).
-- `lint`: runs `swiftlint` when installed.
-- `run`: runs `swift run tmrc` (requires `Package.swift`).
-- `clean`: runs `swift package clean` (requires `Package.swift`).
+- `setup` / `check-env`: validates development toolchain and optional tools; prints the full environment checklist. Only this command shows the `[ok]` / `[warn]` lines.
+- `build`: runs `swift build` (requires `Package.swift`). Runs setup checks silently first.
+- `test`: runs `swift test` (requires `Package.swift`). Runs setup checks silently first.
+- `lint`: runs `swiftlint` when installed. Runs setup checks silently first.
+- `record`: toggles recording (start if stopped, stop if running). Uses the built `tmrc` binary; no setup output or build log.
+- `status`: prints recording status, storage path, disk usage, and retention policy. Uses the built binary; no setup output or build log.
+- `dump`: exports all recordings to a single timestamped MP4 in the project root (`tmrc_dump_YYYY-MM-DD_HH-MM-SS.mp4`). Uses the built binary; no setup output or build log.
+- `wipe`: removes all segment files and clears the index; the daemon (if running) keeps running. Uses the built binary; no setup output or build log.
+- `clean`: runs `swift package clean` (requires `Package.swift`). Does not run setup.
 
 ### Built executable
 

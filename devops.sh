@@ -15,10 +15,12 @@ has_cmd() {
 }
 
 ok() {
+  [[ -n "${DEVOPS_QUIET:-}" ]] && return
   echo -e "${GREEN}[ok]${NC} $1"
 }
 
 warn() {
+  [[ -n "${DEVOPS_QUIET:-}" ]] && return
   echo -e "${YELLOW}[warn]${NC} $1"
 }
 
@@ -63,6 +65,14 @@ assert_swift_package() {
   fi
 }
 
+# Build quietly and run the tmrc binary (no "Building for debugging..." from swift run).
+run_tmrc() {
+  (cd "$PROJECT_ROOT" && swift build -q 2>/dev/null) || true
+  local bin
+  bin="$(cd "$PROJECT_ROOT" && swift build --show-bin-path 2>/dev/null)/tmrc"
+  (cd "$PROJECT_ROOT" && "$bin" "$@")
+}
+
 # Install SwiftLint from GitHub portable binary when Homebrew is unavailable or fails
 install_swiftlint_portable() {
   [[ "$(uname -s)" != "Darwin" ]] && return 1
@@ -95,6 +105,10 @@ install_swiftlint_portable() {
 
 run_setup() {
   local failures=0
+  if [[ "${1:-}" == "quiet" ]]; then
+    DEVOPS_QUIET=1
+    shift
+  fi
 
   if [[ "$(uname -s)" != "Darwin" ]]; then
     err "tmrc targets macOS. Current OS is not Darwin."
@@ -168,22 +182,23 @@ run_setup() {
   fi
 
   ok "Environment check passed."
+  unset -v DEVOPS_QUIET 2>/dev/null || true
 }
 
 cmd_build() {
-  run_setup
+  run_setup quiet
   assert_swift_package
   swift build
 }
 
 cmd_test() {
-  run_setup
+  run_setup quiet
   assert_swift_package
   swift test
 }
 
 cmd_lint() {
-  run_setup
+  run_setup quiet
   if ! has_cmd swiftlint; then
     err "SwiftLint is required for lint command."
     err "Install with Homebrew: brew install swiftlint"
@@ -193,35 +208,35 @@ cmd_lint() {
 }
 
 cmd_record() {
-  run_setup
+  run_setup quiet
   assert_swift_package
   local status_out
-  status_out=$(swift run tmrc status 2>/dev/null) || true
+  status_out=$(run_tmrc status 2>/dev/null) || true
   if echo "$status_out" | grep -q "Recording: yes"; then
-    swift run tmrc record --stop
+    run_tmrc record --stop
   else
-    swift run tmrc record --start
+    run_tmrc record --start
   fi
 }
 
 cmd_status() {
-  run_setup
+  run_setup quiet
   assert_swift_package
-  swift run tmrc status
+  run_tmrc status
 }
 
 cmd_dump() {
-  run_setup
+  run_setup quiet
   assert_swift_package
   local out
   out="${PROJECT_ROOT}/tmrc_dump_$(date +%Y-%m-%d_%H-%M-%S).mp4"
-  swift run tmrc export --from "1000d ago" --to "now" -o "$out"
+  run_tmrc export --from "1000d ago" --to "now" -o "$out"
 }
 
 cmd_wipe() {
-  run_setup
+  run_setup quiet
   assert_swift_package
-  swift run tmrc wipe
+  run_tmrc wipe
 }
 
 cmd_clean() {

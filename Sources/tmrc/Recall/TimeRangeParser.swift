@@ -42,7 +42,7 @@ public struct TimeRangeParser {
         if s == "yesterday" {
             return calendar.date(byAdding: .day, value: -1, to: now)
         }
-        let pattern = #"(\d+)\s*(h|m|min)\s*ago"#
+        let pattern = #"(\d+)\s*(h|m|min|d)\s*ago"#
         guard let regex = try? NSRegularExpression(pattern: pattern),
               let match = regex.firstMatch(in: s, range: NSRange(s.startIndex..., in: s)),
               match.numberOfRanges >= 3,
@@ -55,9 +55,13 @@ public struct TimeRangeParser {
         let value: Int
         if unit == "h" { value = -num }
         else if unit == "m" || unit == "min" { value = -num }
+        else if unit == "d" { value = -num }
         else { return nil }
         if unit == "h" {
             return calendar.date(byAdding: .hour, value: value, to: now)
+        }
+        if unit == "d" {
+            return calendar.date(byAdding: .day, value: value, to: now)
         }
         return calendar.date(byAdding: .minute, value: value, to: now)
     }

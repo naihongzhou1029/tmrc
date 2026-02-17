@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import ScreenCaptureKit
 import CoreMedia
 import CoreVideo
@@ -110,8 +111,9 @@ public final class ScreenCaptureService: NSObject, SCStreamOutput, SCStreamDeleg
         let filter = SCContentFilter(display: display, excludingWindows: [])
         let config = SCStreamConfiguration()
         config.minimumFrameInterval = CMTimeMakeWithSeconds(sampleInterval, preferredTimescale: 600)
-        config.width = display.width
-        config.height = display.height
+        let scaleFactor = backingScaleFactor(for: display)
+        config.width = Int(Double(display.width) * scaleFactor)
+        config.height = Int(Double(display.height) * scaleFactor)
         config.pixelFormat = kCVPixelFormatType_32BGRA
         let stream = SCStream(filter: filter, configuration: config, delegate: self)
         do {
@@ -120,6 +122,15 @@ public final class ScreenCaptureService: NSObject, SCStreamOutput, SCStreamDeleg
             throw error
         }
         self.stream = stream
+    }
+
+    /// Backing scale factor for the given display so capture uses native pixel resolution (e.g. 2 on Retina).
+    private func backingScaleFactor(for display: SCDisplay) -> CGFloat {
+        let displayFrame = display.frame
+        guard let screen = NSScreen.screens.first(where: { $0.frame.equalTo(displayFrame) }) else {
+            return NSScreen.main?.backingScaleFactor ?? 2
+        }
+        return screen.backingScaleFactor
     }
 
     private func copyPixelBuffer(_ source: CVPixelBuffer) -> CVPixelBuffer? {
