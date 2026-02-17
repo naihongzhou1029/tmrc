@@ -85,6 +85,18 @@ public struct ExportEngine {
     }
 
     private func exportMP4(segments: [IndexSegment], outputPath: String) throws {
+        let outputURL = URL(fileURLWithPath: outputPath)
+        if FileManager.default.fileExists(atPath: outputPath) {
+            try FileManager.default.removeItem(at: outputURL)
+        }
+
+        // High quality: passthrough concatenation (no re-encode) to avoid blur from second compression.
+        if quality == .high {
+            try exportMP4Passthrough(segments: segments, outputURL: outputURL)
+            return
+        }
+
+        // Low/medium: re-encode with preset (downscales to 720p/1080p).
         let composition = AVMutableComposition()
         guard let videoTrack = composition.addMutableTrack(
             withMediaType: .video,
@@ -94,23 +106,13 @@ public struct ExportEngine {
         }
 
         var currentTime = CMTime.zero
-        var naturalSize = CGSize.zero
-
         for seg in segments {
             let url = URL(fileURLWithPath: seg.filePath)
             let asset = AVURLAsset(url: url)
             guard let track = asset.tracks(withMediaType: .video).first else { continue }
             let range = CMTimeRange(start: .zero, duration: asset.duration)
-            if naturalSize == .zero {
-                naturalSize = track.naturalSize
-            }
             try videoTrack.insertTimeRange(range, of: track, at: currentTime)
             currentTime = CMTimeAdd(currentTime, range.duration)
-        }
-
-        let outputURL = URL(fileURLWithPath: outputPath)
-        if FileManager.default.fileExists(atPath: outputPath) {
-            try FileManager.default.removeItem(at: outputURL)
         }
 
         let preset: String
@@ -139,6 +141,78 @@ public struct ExportEngine {
 
         if let exportError = exportError {
             throw ExportError.exportFailed(exportError.localizedDescription)
+        }
+    }
+
+    /// Concatenates segment H.264 streams without re-encoding to preserve capture quality (avoids blur from second compression).
+    private func exportMP4Passthrough(segments: [IndexSegment], outputURL: URL) throws {
+        guard let first = segments.first,
+              let firstTrack = AVURLAsset(url: URL(fileURLWithPath: first.filePath)).tracks(withMediaType: .video).first,
+              let firstFd = firstTrack.formatDescriptions.first
+        else {
+            throw ExportError.exportFailed("No video track or format in segments for passthrough.")
+        }
+        let formatDesc = firstFd as! CMFormatDescription
+
+        let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
+        let input = AVAssetWriterInput(mediaType: .video, outputSettings: nil, sourceFormatHint: formatDesc)
+        input.expectsMediaDataInRealTime = false
+        writer.add(input)
+        writer.startWriting()
+        writer.startSession(atSourceTime: .zero)
+
+        var appendError: Error?
+        var currentTime = CMTime.zero
+
+        for seg in segments {
+            let asset = AVURLAsset(url: URL(fileURLWithPath: seg.filePath))
+            guard let track = asset.tracks(withMediaType: .video).first else { continue }
+            let reader = try AVAssetReader(asset: asset)
+            let readerOutput = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
+            reader.add(readerOutput)
+            reader.startReading()
+
+            while let sampleBuffer = readerOutput.copyNextSampleBuffer() {
+                while !input.isReadyForMoreMediaData {
+                    Thread.sleep(forTimeInterval: 0.005)
+                }
+                var count = 0
+                CMSampleBufferGetSampleTimingInfoArray(sampleBuffer, entryCount: 0, arrayToFill: nil, entriesNeededOut: &count)
+                guard count > 0 else { continue }
+                var timings = [CMSampleTimingInfo](repeating: CMSampleTimingInfo.invalid, count: count)
+                CMSampleBufferGetSampleTimingInfoArray(sampleBuffer, entryCount: count, arrayToFill: &timings, entriesNeededOut: nil)
+                for i in 0..<count {
+                    timings[i].presentationTimeStamp = CMTimeAdd(timings[i].presentationTimeStamp, currentTime)
+                    timings[i].decodeTimeStamp = CMTimeAdd(timings[i].decodeTimeStamp, currentTime)
+                }
+                var copy: CMSampleBuffer?
+                let err = CMSampleBufferCreateCopyWithNewTiming(
+                    allocator: kCFAllocatorDefault,
+                    sampleBuffer: sampleBuffer,
+                    sampleTimingEntryCount: count,
+                    sampleTimingArray: &timings,
+                    sampleBufferOut: &copy
+                )
+                if err == noErr, let c = copy {
+                    if !input.append(c) {
+                        appendError = ExportError.exportFailed("Append failed")
+                    }
+                } else if err != noErr {
+                    appendError = ExportError.exportFailed("Failed to copy sample buffer: \(err)")
+                }
+            }
+            currentTime = CMTimeAdd(currentTime, asset.duration)
+        }
+
+        input.markAsFinished()
+        let semaphore = DispatchSemaphore(value: 0)
+        writer.finishWriting {
+            if appendError == nil { appendError = writer.error }
+            semaphore.signal()
+        }
+        semaphore.wait()
+        if let appendError = appendError {
+            throw appendError
         }
     }
 

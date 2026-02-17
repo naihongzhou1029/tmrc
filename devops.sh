@@ -65,11 +65,22 @@ assert_swift_package() {
   fi
 }
 
+# Run a command and filter stderr to drop swift-driver version line
+run_swift() {
+  local stderr_file
+  stderr_file=$(mktemp)
+  "$@" 2>"$stderr_file"
+  local ret=$?
+  grep -v 'swift-driver version' "$stderr_file" >&2
+  rm -f "$stderr_file"
+  return $ret
+}
+
 # Build quietly and run the tmrc binary (no "Building for debugging..." from swift run).
 run_tmrc() {
-  (cd "$PROJECT_ROOT" && swift build -q 2>/dev/null) || true
+  (cd "$PROJECT_ROOT" && run_swift swift build -q) || true
   local bin
-  bin="$(cd "$PROJECT_ROOT" && swift build --show-bin-path 2>/dev/null)/tmrc"
+  bin="$(cd "$PROJECT_ROOT" && run_swift swift build --show-bin-path)/tmrc"
   (cd "$PROJECT_ROOT" && "$bin" "$@")
 }
 
@@ -188,13 +199,13 @@ run_setup() {
 cmd_build() {
   run_setup quiet
   assert_swift_package
-  swift build
+  run_swift swift build
 }
 
 cmd_test() {
   run_setup quiet
   assert_swift_package
-  swift test
+  run_swift swift test
 }
 
 cmd_lint() {
@@ -241,7 +252,7 @@ cmd_wipe() {
 
 cmd_clean() {
   assert_swift_package
-  swift package clean
+  run_swift swift package clean
   ok "Swift package artifacts cleaned."
 }
 
@@ -293,4 +304,5 @@ main() {
   esac
 }
 
-main "$@"
+# Filter swift-driver version from stderr (it can appear from subshells where run_swift isn't applied).
+main "$@" 2> >(grep -v --line-buffered 'swift-driver version' >&2)
