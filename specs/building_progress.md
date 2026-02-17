@@ -10,7 +10,7 @@ This file tracks implementation progress against the plan derived from `spec.md`
 
 | Item | Status | Notes |
 |------|--------|--------|
-| Event-based segments, sample_rate_ms (32.2 ms default) | Done | Config + EventSegmenter + DaemonRunner loop |
+| Event-based segments, sample_rate_ms (100 ms default, 10 FPS) | Done | Config + EventSegmenter + DaemonRunner loop |
 | Segment boundaries (flush on idle frame) | Done | EventSegmenter.pushFrame / flushPending |
 | Display option (main / combined) | Done | ScreenCaptureService + config.display |
 | capture_mode (full_screen / window / app) | Pending | Config key exists; capture is display-only, no window/app filter yet |

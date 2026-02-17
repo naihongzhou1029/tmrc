@@ -43,7 +43,7 @@ public struct Installer {
     private func writeDefaultConfig(to path: String) throws {
         let content = """
         # tmrc configuration (default)
-        sample_rate_ms: 32.2
+        sample_rate_ms: 100
         display: main
         capture_mode: full_screen
         audio_enabled: false

@@ -8,7 +8,7 @@ struct ConfigTests {
     func sampleRateDefault() throws {
         let yaml = ""
         let config = try ConfigLoader.loadFromYAML(yaml)
-        #expect(config.sampleRateMs == 32.2)
+        #expect(config.sampleRateMs == 100)
     }
 
     @Test("Sample rate override")
@@ -23,7 +23,7 @@ struct ConfigTests {
         let yaml = "sample_rate_ms: 0"
         do {
             let config = try ConfigLoader.loadFromYAML(yaml)
-            #expect(config.sampleRateMs == 32.2)
+            #expect(config.sampleRateMs == 100)
         } catch ConfigError.invalidSampleRate {
             // acceptable: validation error
         } catch {

@@ -4,9 +4,9 @@ Table of test cases for review and execution. Fill **Actual Result** and **Pass*
 
 | # | Category | Subject | Action Taken | Expected Result | Actual Result | Pass |
 |---|----------|---------|----------------|---------------------|---------------|-----|
-| 1 | Recording | Sample rate default | Create a config file (or in-memory YAML) with no `sample_rate_ms` key. Call the config loader with that config source. | Assert the loaded config’s `sample_rate_ms` (or equivalent property) equals 32.2. |
+| 1 | Recording | Sample rate default | Create a config file (or in-memory YAML) with no `sample_rate_ms` key. Call the config loader with that config source. | Assert the loaded config’s `sample_rate_ms` (or equivalent property) equals 100. |
 | 2 | Recording | Sample rate override | Create a config file containing `sample_rate_ms: 16.1`. Call the config loader with that path (or content). | Assert the loaded config’s `sample_rate_ms` equals 16.1. |
-| 3 | Recording | Sample rate invalid | Create a config file with `sample_rate_ms: 0` (or negative). Call the config loader. | Assert load fails with validation error, or the loader returns a sensible default (e.g. 32.2); no crash. |
+| 3 | Recording | Sample rate invalid | Create a config file with `sample_rate_ms: 0` (or negative). Call the config loader. | Assert load fails with validation error, or the loader returns a sensible default (e.g. 100); no crash. |
 | 4 | Recording | Segment boundaries (event-based) | In a test harness, feed a synthetic event stream: emit one event, then advance time by one frame with no events. Invoke the segment-boundary logic. | Assert at least one segment is flushed after the idle frame. |
 | 5 | Recording | Segment boundaries (burst) | Feed ~31 events at 32.2 ms intervals over ~1 s, then one frame with no events. Invoke the segment-boundary logic. | Assert one segment (or the expected count per spec) is flushed after the idle frame. |
 | 6 | Recording | Session name default | Load config with no `session` key. Start recording (or invoke the code path that resolves session name). | Assert the resolved session name is `"default"`. |

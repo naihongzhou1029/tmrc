@@ -34,7 +34,7 @@ public enum OCRGranularity: String, Codable, CaseIterable {
 }
 
 public struct TMRCConfig: Codable {
-    /// Sample rate for event parsing (ms). Default 32.2 ≈ 30 FPS.
+    /// Sample rate for event parsing (ms). Default 100 = 10 FPS.
     public var sampleRateMs: Double
     /// Which display(s) to capture.
     public var display: DisplayOption
@@ -74,7 +74,7 @@ public struct TMRCConfig: Codable {
         case exportQuality = "export_quality"
     }
 
-    public static let defaultSampleRateMs = 32.2
+    public static let defaultSampleRateMs = 100.0
     public static let defaultSession = "default"
     public static let defaultStorageRoot = "~/.tmrc/"
     public static let defaultOcrLanguages = ["en-US", "zh-Hant", "zh-Hans"]

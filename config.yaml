@@ -2,8 +2,8 @@
 # See README.md and specs/spec.md for context.
 
 # Sample rate for parsing events (capture/processing interval).
-# Default 32.2 ms ≈ 30 FPS. Time is used as the sample rate for event-based recording.
-sample_rate_ms: 32.2
+# Default 100 ms = 10 FPS. Time is used as the sample rate for event-based recording.
+sample_rate_ms: 100
 
 # Which display(s) to capture. Options: main (default), or combined / display index (TBD).
 # Default: main display only.
