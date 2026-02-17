@@ -4,6 +4,9 @@
 .build/
 .swiftpm/
 
+# devops.sh auto-installed tools (e.g. SwiftLint portable)
+.bin/
+
 # Xcode
 DerivedData/
 build/

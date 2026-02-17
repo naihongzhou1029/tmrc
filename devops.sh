@@ -58,6 +58,36 @@ assert_swift_package() {
   fi
 }
 
+# Install SwiftLint from GitHub portable binary when Homebrew is unavailable or fails
+install_swiftlint_portable() {
+  [[ "$(uname -s)" != "Darwin" ]] && return 1
+  if ! has_cmd curl; then
+    warn "curl not found; cannot download SwiftLint portable binary"
+    return 1
+  fi
+  local tag
+  tag=$(curl -sL https://api.github.com/repos/realm/SwiftLint/releases/latest | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)
+  [[ -z "$tag" ]] && warn "Could not resolve SwiftLint latest release tag" && return 1
+  ok "Downloading SwiftLint $tag (portable macOS binary)..."
+  mkdir -p "$PROJECT_ROOT/.bin"
+  local zip_path
+  zip_path=$(mktemp -t swiftlint.XXXXXX.zip)
+  if ! curl -sL "https://github.com/realm/SwiftLint/releases/download/${tag}/portable_swiftlint.zip" -o "$zip_path"; then
+    rm -f "$zip_path"
+    warn "SwiftLint download failed"
+    return 1
+  fi
+  if ! unzip -o -q -j "$zip_path" -d "$PROJECT_ROOT/.bin" 2>/dev/null; then
+    rm -f "$zip_path"
+    warn "SwiftLint unzip failed"
+    return 1
+  fi
+  rm -f "$zip_path"
+  chmod +x "$PROJECT_ROOT/.bin/swiftlint"
+  export PATH="$PROJECT_ROOT/.bin:$PATH"
+  return 0
+}
+
 run_setup() {
   local failures=0
 
@@ -102,21 +132,28 @@ run_setup() {
     warn "Install with Homebrew: brew install ffmpeg"
   fi
 
+  # Prefer project-local portable install so it's found without relying on PATH
+  if [[ -d "$PROJECT_ROOT/.bin" ]]; then
+    export PATH="$PROJECT_ROOT/.bin:$PATH"
+  fi
+
   if has_cmd swiftlint; then
     ok "SwiftLint found"
   else
     if has_cmd brew; then
       ok "Installing SwiftLint via Homebrew..."
-      brew install swiftlint || true
-      if has_cmd swiftlint; then
-        ok "SwiftLint installed"
+      if brew install swiftlint 2>/dev/null; then
+        ok "SwiftLint installed via Homebrew"
       else
-        warn "SwiftLint install failed or not in PATH (full Xcode may be required)"
-        warn "Run manually: brew install swiftlint"
+        install_swiftlint_portable
       fi
     else
-      warn "SwiftLint not found and Homebrew not available"
-      warn "Install Homebrew from https://brew.sh or run: brew install swiftlint"
+      install_swiftlint_portable
+    fi
+    if has_cmd swiftlint; then
+      ok "SwiftLint installed"
+    else
+      warn "SwiftLint install failed. Install manually: brew install swiftlint"
     fi
   fi
 
