@@ -39,8 +39,10 @@ Commands:
   build       Run swift build
   test        Run swift test
   lint        Run SwiftLint (if installed)
-  record      Start recording (tmrc record --start)
+  record      Toggle recording (start if stopped, stop if running)
   status      Get recording status (tmrc status)
+  dump        Export all recordings to current folder (one MP4)
+  wipe        Remove all recordings and index; daemon keeps running
   clean       Clean Swift package artifacts
   help        Show this help message
 
@@ -48,7 +50,8 @@ Examples:
   ./devops.sh setup
   ./devops.sh build
   ./devops.sh record
-  ./devops.sh status
+  ./devops.sh dump
+  ./devops.sh wipe
 EOF
 }
 
@@ -192,13 +195,33 @@ cmd_lint() {
 cmd_record() {
   run_setup
   assert_swift_package
-  swift run tmrc record --start
+  local status_out
+  status_out=$(swift run tmrc status 2>/dev/null) || true
+  if echo "$status_out" | grep -q "Recording: yes"; then
+    swift run tmrc record --stop
+  else
+    swift run tmrc record --start
+  fi
 }
 
 cmd_status() {
   run_setup
   assert_swift_package
   swift run tmrc status
+}
+
+cmd_dump() {
+  run_setup
+  assert_swift_package
+  local out
+  out="${PROJECT_ROOT}/tmrc_dump_$(date +%Y-%m-%d_%H-%M-%S).mp4"
+  swift run tmrc export --from "1000d ago" --to "now" -o "$out"
+}
+
+cmd_wipe() {
+  run_setup
+  assert_swift_package
+  swift run tmrc wipe
 }
 
 cmd_clean() {
@@ -234,6 +257,12 @@ main() {
       ;;
     status)
       cmd_status "$@"
+      ;;
+    dump)
+      cmd_dump "$@"
+      ;;
+    wipe)
+      cmd_wipe "$@"
       ;;
     clean)
       cmd_clean "$@"

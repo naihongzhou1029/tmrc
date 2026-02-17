@@ -77,4 +77,12 @@ public struct IndexManager {
                 .fetchOne(db)
         }
     }
+
+    /// Remove all segment rows (for wipe). Daemon can keep running; new segments will repopulate.
+    public mutating func deleteAllSegments() throws {
+        try connect()
+        try dbQueue?.write { db in
+            try db.execute(sql: "DELETE FROM segments")
+        }
+    }
 }

@@ -44,6 +44,7 @@ struct Main: ParsableCommand {
             InstallCommand.self,
             UninstallCommand.self,
             StatusCommand.self,
+            WipeCommand.self,
         ]
     )
 
