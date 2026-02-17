@@ -28,6 +28,15 @@ err() {
   echo -e "${RED}[error]${NC} $1" >&2
 }
 
+# Print the actual command line so users can see/copy what is run. Use stderr so
+# command substitution (e.g. swift build --show-bin-path) only captures real output.
+show_cmd() {
+  [[ -n "${DEVOPS_QUIET:-}" ]] && return
+  echo -ne "${YELLOW}\$ ${NC}" >&2
+  printf '%q ' "$@" >&2
+  echo >&2
+}
+
 usage() {
   cat <<'EOF'
 tmrc development command center
@@ -67,6 +76,7 @@ assert_swift_package() {
 
 # Run a command and filter stderr to drop swift-driver version line
 run_swift() {
+  show_cmd "$@"
   local stderr_file
   stderr_file=$(mktemp)
   "$@" 2>"$stderr_file"
@@ -78,9 +88,11 @@ run_swift() {
 
 # Build quietly and run the tmrc binary (no "Building for debugging..." from swift run).
 run_tmrc() {
-  (cd "$PROJECT_ROOT" && run_swift swift build -q) || true
+  show_cmd bash -c "cd $(printf '%q' "$PROJECT_ROOT") && swift build -q"
+  (cd "$PROJECT_ROOT" && swift build -q 2> >(grep -v --line-buffered 'swift-driver version' >&2)) || true
   local bin
   bin="$(cd "$PROJECT_ROOT" && run_swift swift build --show-bin-path)/tmrc"
+  show_cmd "$bin" "$@"
   (cd "$PROJECT_ROOT" && "$bin" "$@")
 }
 
