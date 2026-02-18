@@ -112,3 +112,15 @@ After `swift build`, the native binary is produced under the Swift Package Manag
 ```
 
 You can run it directly (e.g. `.build/arm64-apple-macosx/debug/tmrc --version`) or use `swift run tmrc`. For an optimized **release** build, run `swift build -c release`; the binary is then at `.build/arm64-apple-macosx/release/tmrc`.
+
+---
+
+## Known issues
+
+- **Recording can stop when ScreenCaptureKit stream errors**  
+  - **Symptom**: `tmrc status` reports `Recording: yes` for hours, then later `Recording: no`, and the last dumped video is shorter than expected.  
+  - **Observed cause**: `ScreenCaptureKit` sometimes reports an internal `SCStreamErrorDomain` error (for example, code `-3808`) on the capture stream. The daemon treats any `SCStream` `didStopWithError` as fatal and stops the capture loop, but today this is only visible in the macOS unified log, not in `tmrc.log`.  
+  - **How to inspect**:  
+    - Check `~/.tmrc/tmrc.log` for the last `Segment written ...` line and CLI status queries.  
+    - Check the macOS unified log for `tmrc` around that timestamp, e.g. `log show --predicate 'process == "tmrc"' --last 24h --style syslog`, and look for `ScreenCaptureKit` `SCStreamErrorDomain` entries.  
+  - **Planned improvements**: log the underlying `SCStream` error and improve recovery/notifications so this failure mode is visible and, where possible, auto‑recovered.

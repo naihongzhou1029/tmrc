@@ -19,8 +19,8 @@ public final class ScreenCaptureService: NSObject, SCStreamOutput, SCStreamDeleg
     private let sampleInterval: TimeInterval
     private let displayOption: DisplayOption
     private let queue = DispatchQueue(label: "tmrc.capture.queue")
-    /// Called when stream stops (e.g. permission revoked). Invoked on queue.
-    public var onStreamError: (() -> Void)?
+    /// Called when stream stops with an error (e.g. permission revoked or transient failure). Invoked on queue.
+    public var onStreamError: ((_ error: Error) -> Void)?
     private var stream: SCStream?
     private var content: SCShareableContent?
     private var latest: (CVPixelBuffer, CMTime, Date, UInt64)?
@@ -78,8 +78,7 @@ public final class ScreenCaptureService: NSObject, SCStreamOutput, SCStreamDeleg
     // MARK: - SCStreamOutput
 
     public func stream(_ stream: SCStream, didStopWithError error: Error) {
-        Notifier.notify(title: "tmrc", body: "Screen capture stopped. If you revoked Screen Recording permission, recording has been saved and the app has quit.")
-        onStreamError?()
+        onStreamError?(error)
     }
 
     public func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
