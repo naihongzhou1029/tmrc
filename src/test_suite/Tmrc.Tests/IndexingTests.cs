@@ -20,6 +20,7 @@ public class IndexingTests
             id: "seg-1",
             start: start,
             end: end,
+            path: "C:/segments/seg-1.mp4",
             ocrText: "hello world",
             sttText: "speech text");
 
@@ -32,6 +33,7 @@ public class IndexingTests
         Assert.Equal("seg-1", row.Id);
         Assert.Equal(start, row.Start);
         Assert.Equal(end, row.End);
+        Assert.Equal("C:/segments/seg-1.mp4", row.Path);
         Assert.Equal("hello world", row.OcrText);
         Assert.Equal("speech text", row.SttText);
     }

@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Pipes;
 using System.Threading;
 using System.Threading.Tasks;
 using Tmrc.Core.Config;
@@ -8,6 +10,7 @@ using Tmrc.Core.Indexing;
 using Tmrc.Core.Recall;
 using Tmrc.Core.Storage;
 using Tmrc.Core.Support;
+using Tmrc.Core.Recording;
 
 namespace Tmrc.Cli;
 
@@ -189,11 +192,18 @@ public static class Program
 
         try
         {
-            proc!.Kill(true);
-            if (!proc.WaitForExit(5000))
+            // Prefer a graceful shutdown via IPC; fall back to Kill if it fails.
+            TrySendDaemonShutdown();
+
+            if (!proc!.WaitForExit(5000))
             {
-                Console.Error.WriteLine("Recorder daemon did not exit in time.");
-                return 1;
+                // Fallback: force kill if the daemon did not exit in time.
+                proc.Kill(true);
+                if (!proc.WaitForExit(5000))
+                {
+                    Console.Error.WriteLine("Recorder daemon did not exit in time.");
+                    return 1;
+                }
             }
         }
         catch (Exception ex)
@@ -246,8 +256,111 @@ public static class Program
 
     private static int Export(string[] args)
     {
-        Console.WriteLine("Export not yet implemented on Windows.");
-        return 1;
+        string? fromExpr = null;
+        string? toExpr = null;
+        string? outputPath = null;
+
+        for (var i = 0; i < args.Length; i++)
+        {
+            var a = args[i];
+            if (a == "--from" && i + 1 < args.Length)
+            {
+                fromExpr = args[++i];
+            }
+            else if (a == "--to" && i + 1 < args.Length)
+            {
+                toExpr = args[++i];
+            }
+            else if ((a == "-o" || a == "--output") && i + 1 < args.Length)
+            {
+                outputPath = args[++i];
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(outputPath))
+        {
+            Console.Error.WriteLine("Usage: tmrc export --from <expr> --to <expr> -o <outputPath>");
+            return 1;
+        }
+
+        var cfg = LoadConfig();
+        var storage = new StorageManager(cfg.StorageRoot);
+        var indexPath = storage.IndexPath(cfg.Session);
+
+        if (!File.Exists(indexPath))
+        {
+            Console.Error.WriteLine("No index found; nothing to export.");
+            return 1;
+        }
+
+        var now = DateTimeOffset.Now;
+        if (string.IsNullOrWhiteSpace(fromExpr) || string.IsNullOrWhiteSpace(toExpr))
+        {
+            Console.Error.WriteLine("Both --from and --to must be provided for export.");
+            return 1;
+        }
+
+        TimeRange range;
+        try
+        {
+            range = TimeRangeParser.ParseRelative(fromExpr, toExpr, now);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Failed to parse time range: {ex.Message}");
+            return 1;
+        }
+
+        var store = new IndexStore(indexPath);
+        var rows = store.QueryByTimeRange(range.From, range.To);
+        if (rows.Count == 0)
+        {
+            Console.Error.WriteLine("No segments found in the requested time range.");
+            return 1;
+        }
+
+        // Resolve index rows to on-disk segment files using the stored path.
+        var ordered = new List<IndexStore.SegmentRow>();
+        foreach (var row in rows)
+        {
+            if (string.IsNullOrWhiteSpace(row.Path) || !File.Exists(row.Path))
+            {
+                Console.Error.WriteLine($"Missing segment file for id {row.Id}; aborting export.");
+                return 1;
+            }
+
+            ordered.Add(row);
+        }
+
+        ordered.Sort((a, b) => a.Start.CompareTo(b.Start));
+
+        try
+        {
+            var outDir = Path.GetDirectoryName(outputPath);
+            if (!string.IsNullOrEmpty(outDir))
+            {
+                Directory.CreateDirectory(outDir);
+            }
+
+            using var writer = new StreamWriter(outputPath, append: false);
+            writer.WriteLine("# tmrc export manifest (simulated)");
+            writer.WriteLine($"# from: {range.From:O}");
+            writer.WriteLine($"# to:   {range.To:O}");
+            writer.WriteLine();
+
+            foreach (var row in ordered)
+            {
+                writer.WriteLine($"{row.Start:O} -> {row.End:O} :: {row.Path}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Failed to write export file: {ex.Message}");
+            return 1;
+        }
+
+        Console.WriteLine($"Exported {ordered.Count} segment reference(s) to {outputPath}.");
+        return 0;
     }
 
     private static int Ask(string[] args)
@@ -394,6 +507,30 @@ public static class Program
         return 0;
     }
 
+    private static void TrySendDaemonShutdown()
+    {
+        try
+        {
+            using var client = new NamedPipeClientStream(
+                ".",
+                "tmrc-daemon",
+                PipeDirection.InOut,
+                PipeOptions.None);
+
+            client.Connect(1000);
+
+            using var writer = new StreamWriter(client) { AutoFlush = true };
+            using var reader = new StreamReader(client);
+
+            writer.WriteLine("shutdown");
+            reader.ReadLine(); // best-effort ack
+        }
+        catch
+        {
+            // IPC is best-effort; StopRecording will fall back to Kill.
+        }
+    }
+
     private static int RunDaemon()
     {
         var cfg = LoadConfig();
@@ -404,17 +541,149 @@ public static class Program
         var pid = Environment.ProcessId;
         File.WriteAllText(storage.PidFilePath, pid.ToString());
 
-        // Minimal placeholder daemon loop. Real recording/IPC will be added later phases.
+        var logger = new Logger(storage.LogFilePath, ParseLogLevel(cfg.LogLevel));
+
+        Directory.CreateDirectory(storage.SegmentsDirectory);
+
+        var indexPath = storage.IndexPath(cfg.Session);
+        var indexStore = new IndexStore(indexPath);
+
+        var segmenter = new EventSegmenter();
+        var flushedSegments = new List<EventSegmenter.Segment>();
+        var frameIndex = 0;
+
+        // Simple simulated activity model: 30% of frames have "events".
+        var random = new Random();
+        var sampleIntervalMs = Math.Max(1, (int)cfg.SampleRateMs);
+        var baseTime = DateTimeOffset.Now;
+
+        // Basic retention policy aligning with spec defaults (7 days, 50 GB).
+        var retention = new RetentionManager(
+            maxAgeDays: 7,
+            maxDiskBytes: 50L * 1024 * 1024 * 1024);
+
+        using var shutdownCts = new CancellationTokenSource();
+        var shutdownToken = shutdownCts.Token;
+
+        // IPC server thread: listens for simple text commands over a named pipe.
+        var ipcThread = new Thread(() =>
+        {
+            while (!shutdownToken.IsCancellationRequested)
+            {
+                try
+                {
+                    using var server = new NamedPipeServerStream(
+                        "tmrc-daemon",
+                        PipeDirection.InOut,
+                        1,
+                        PipeTransmissionMode.Byte,
+                        PipeOptions.Asynchronous);
+
+                    server.WaitForConnection();
+
+                    using var reader = new StreamReader(server);
+                    using var writer = new StreamWriter(server) { AutoFlush = true };
+
+                    var line = reader.ReadLine();
+                    if (string.Equals(line, "shutdown", StringComparison.OrdinalIgnoreCase))
+                    {
+                        writer.WriteLine("ok");
+                        shutdownCts.Cancel();
+                    }
+                    else
+                    {
+                        writer.WriteLine("unknown");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    if (shutdownToken.IsCancellationRequested)
+                    {
+                        break;
+                    }
+
+                    logger.Warn($"IPC server error: {ex.Message}");
+                    // Brief pause before attempting to accept a new connection.
+                    Thread.Sleep(250);
+                }
+            }
+        })
+        {
+            IsBackground = true,
+            Name = "tmrc-daemon-ipc"
+        };
+
+        logger.Info("tmrc daemon starting.");
+        ipcThread.Start();
+
+        // Simulated recording loop: feeds frames into the event-based segmenter,
+        // writes dummy segment files, and records them into the index.
+        while (!shutdownToken.IsCancellationRequested)
+        {
+            flushedSegments.Clear();
+
+            var hasEvent = random.NextDouble() < 0.3;
+            segmenter.OnFrame(frameIndex, hasEvent, flushedSegments);
+
+            foreach (var seg in flushedSegments)
+            {
+                var start = baseTime.AddMilliseconds(seg.StartFrame * sampleIntervalMs);
+                var end = baseTime.AddMilliseconds(seg.EndFrame * sampleIntervalMs);
+                var id = Guid.NewGuid().ToString("N");
+
+                var fileName = $"{start.UtcDateTime:yyyyMMdd_HHmmssfff}_{id}.bin";
+                var path = Path.Combine(storage.SegmentsDirectory, fileName);
+
+                try
+                {
+                    File.WriteAllText(path, $"tmrc simulated segment {id} from {start:O} to {end:O}");
+                    indexStore.UpsertSegment(id, start, end, path, ocrText: null, sttText: null);
+                    logger.Info($"Segment recorded: {id} {start:O} - {end:O}");
+                }
+                catch (Exception ex)
+                {
+                    logger.Error($"Failed to write segment {id}: {ex.Message}");
+                }
+            }
+
+            // Apply retention policy after writing new segments.
+            try
+            {
+                var evicted = retention.EvictIfNeeded(storage.SegmentsDirectory);
+                if (evicted > 0)
+                {
+                    logger.Info($"Retention evicted {evicted} old segment file(s).");
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.Warn($"Retention check failed: {ex.Message}");
+            }
+
+            frameIndex++;
+            Thread.Sleep(sampleIntervalMs);
+        }
+
+        logger.Info("tmrc daemon shutting down.");
+
         try
         {
-            Thread.Sleep(Timeout.Infinite);
+            if (File.Exists(storage.PidFilePath))
+            {
+                File.Delete(storage.PidFilePath);
+            }
         }
-        catch (ThreadInterruptedException)
+        catch
         {
-            // exit
+            // best-effort
         }
 
         return 0;
     }
+
+    private static LogLevel ParseLogLevel(string value) =>
+        Enum.TryParse<LogLevel>(value, ignoreCase: true, out var level)
+            ? level
+            : LogLevel.Info;
 }
 

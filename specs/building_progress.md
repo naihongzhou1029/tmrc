@@ -57,8 +57,10 @@
     - Models the spec’s semantics for segment boundaries (items 1.1–1.2) without yet tying into real capture or Media Foundation writers.
   - `Indexing/IndexStore`:
     - SQLite-backed index store per session (one `.sqlite` file) using `Microsoft.Data.Sqlite`.
-    - Schema: `segments(id TEXT PRIMARY KEY, start_utc TEXT, end_utc TEXT, ocr_text TEXT, stt_text TEXT)`.
-    - Supports `UpsertSegment` and `QueryByTimeRange` (overlapping segments ordered by start time).
+    - Schema: `segments(id TEXT PRIMARY KEY, start_utc TEXT, end_utc TEXT, path TEXT, ocr_text TEXT, stt_text TEXT)`.
+    - Backward-compatible migration: adds `path` column via `ALTER TABLE` if missing on existing DBs.
+    - Supports `UpsertSegment(id, start, end, path, ocrText, sttText)` and `QueryByTimeRange` (overlapping segments ordered by start time).
+    - `SegmentRow` includes `Path` so export can resolve segments to on-disk files without filename guessing.
 
 - **CLI (Tmrc.Cli)**
   - `Program.cs`:
@@ -69,12 +71,17 @@
         - Loads config from `config.yaml` in current directory.
         - Uses `StorageManager.EnsureLayout` on `storage_root`.
       - `record` / `record --start`:
-        - Starts a detached **recorder daemon skeleton** by spawning the same `Tmrc.Cli` assembly with `__daemon`.
-        - Daemon writes its PID to `storage_root/tmrc.pid` and then blocks (no capture yet).
-        - If a live daemon already exists (PID file + `Process.GetProcessById`), prints an "already recording" error and exits non-zero.
+        - Starts a detached **recorder daemon** by spawning the same `Tmrc.Cli` assembly with `__daemon`.
+        - Daemon writes PID to `storage_root/tmrc.pid`, runs a **named-pipe server** (`tmrc-daemon`) for control, and a **simulated recording loop** (see below).
+        - If a live daemon already exists (PID file + `Process.GetProcessById`), prints "already in progress" and exits non-zero.
       - `record --stop`:
-        - Reads `tmrc.pid`, locates the process, sends `Kill(true)` and waits up to 5 seconds.
-        - Deletes `tmrc.pid` on success and prints `Recording stopped.` (no flush/index semantics yet).
+        - Prefer **graceful shutdown**: connects to named pipe, sends `shutdown`; waits up to 5 s for daemon exit.
+        - Falls back to `Process.Kill(true)` if IPC fails or daemon does not exit in time.
+        - Deletes `tmrc.pid` on success and prints `Recording stopped.`
+      - **Daemon (`__daemon`)**:
+        - Writes PID file; creates `Logger` (storage root log file, level from config).
+        - **IPC thread**: `NamedPipeServerStream("tmrc-daemon")` accepts connections; on `shutdown` command, sets cancellation and replies `ok`.
+        - **Recording loop** (simulated): uses `EventSegmenter` at `sample_rate_ms`; 30% of frames marked as "event"; on flush, writes dummy `.bin` segment under `segments/` (filename `yyyyMMdd_HHmmssfff_<id>.bin`), calls `IndexStore.UpsertSegment(id, start, end, path, null, null)`, then runs `RetentionManager.EvictIfNeeded` (7 days, 50 GB defaults). Loop exits when shutdown requested; daemon deletes PID file and logs shutdown.
       - `status`:
         - Loads config and prints:
           - `Recording: yes|no` based on `tmrc.pid` and a live process.
@@ -84,17 +91,17 @@
       - `wipe`:
         - Clears and recreates `segments/` under current `storage_root`.
       - `ask`:
-        - Implements a **basic keyword-only ask** over the SQLite index:
+        - **Basic keyword-only ask** over the SQLite index (works on real index data produced by the daemon):
           - Usage: `tmrc ask "query" [--since <expr>] [--until <expr>]`.
-          - Default scope: last 24h (computed from `DateTimeOffset.Now` when `--since`/`--until` are omitted).
-          - With `--since`/`--until`: uses `TimeRangeParser.ParseRelative` to interpret expressions like `"1h ago"`, `"yesterday"`, or absolute timestamps.
-          - Binds to the session index at `storage_root/index/<session>.sqlite` via `IndexStore`.
-          - Filters segments whose combined `ocr_text` + `stt_text` contains the query (case-insensitive).
-          - Prints up to 5 matches with citations in the form `YYYY-MM-DD HH:MM:SS [segment-id] snippet`.
-          - When the index file is missing: prints a friendly "Index is empty" message.
-          - When no matches in scope: prints "No matches found ..." and exits 0.
+          - Default scope: last 24h when `--since`/`--until` omitted.
+          - Uses `TimeRangeParser.ParseRelative` for expressions like `"1h ago"`, `"yesterday"`, or absolute timestamps.
+          - Binds to session index via `IndexStore`; filters by `ocr_text` + `stt_text` (case-insensitive); up to 5 matches with citations `YYYY-MM-DD HH:MM:SS [segment-id] snippet`.
+          - Friendly messages when index missing or no matches.
       - `export`:
-        - Still a placeholder (no Media Foundation-based stitching or GIF/MP4 output yet).
+        - **Implemented (manifest export):** `tmrc export --from <expr> --to <expr> -o <outputPath>`.
+        - Parses time range with `TimeRangeParser.ParseRelative`; queries `IndexStore.QueryByTimeRange`; resolves segments via stored `row.Path` (fails with clear error if any segment file is missing).
+        - Writes a single **manifest file** at `outputPath`: header with from/to, then one line per segment `start -> end :: <path>` in time order.
+        - No Media Foundation stitching or MP4/GIF binary output yet; export produces a manifest of segment paths for the requested range.
 
 - **Test suite (src/test_suite/Tmrc.Tests)**
   - Test framework: xUnit + Microsoft.NET.Test.Sdk.
@@ -122,7 +129,7 @@
   - **Recording tests** (segment boundaries):
   - **Indexing tests**:
     - `IndexingTests`:
-      - "Index schema create and read" creates a temp SQLite DB, inserts a single segment row via `IndexStore.UpsertSegment`, and verifies it can be read back by time-range query with all fields intact.
+      - "Index schema create and read" creates a temp SQLite DB, inserts a single segment row via `IndexStore.UpsertSegment` (including `path`), and verifies it can be read back by time-range query with all fields intact (id, start, end, path, ocr_text, stt_text).
     - `RecordingTests`:
       - "Segment boundaries (event-based)" feeds a single event frame followed by an idle frame and asserts at least one segment is flushed.
       - "Segment boundaries (burst)" feeds ~31 consecutive event frames followed by an idle frame and asserts exactly one segment spanning the burst is flushed.
@@ -137,35 +144,30 @@
     - `devops.ps1 test` → **30 tests passing, 4 tests skipped (daemon E2E), 0 failures.**
 
 - **Not yet implemented (high level gaps vs spec/test matrix)**
-  - **Recording/daemon:**
-    - Recorder daemon skeleton exists (PID file and process lifecycle via `record`/`status`/`record --stop`), but:
-      - No `Windows.Graphics.Capture` integration.
-      - No event-based segmenter or Media Foundation H.264 segment writer.
-      - No monotonic vs wall-clock time handling, crash recovery, or retention integration yet.
+  - **Recording/capture:**
+    - Daemon has IPC, simulated loop, event-based segmenter, retention, and index updates. Still missing:
+      - `Windows.Graphics.Capture` (or equivalent) for real screen capture.
+      - Media Foundation H.264 segment writer (real MP4 segments instead of dummy `.bin`).
+      - Monotonic vs wall-clock time handling, crash recovery semantics.
   - **Indexing/OCR:**
-    - No SQLite index schema or manager.
-    - No OCR integration (e.g. Tesseract) or STT.
-    - No rebuild/re-index commands.
-  - **Ask/export:**
-    - No keyword/semantic search over indexed text.
-    - No export engine (stitching segments, MP4/GIF output, quality presets).
-    - No handling of missing segments or concurrent exports.
-  - **CLI/daemon semantics & ops:**
-    - No named-pipe IPC or request protocol between CLI and daemon (daemon only tracks PID and blocks).
-    - No log rotation; `Logger` does not yet implement 7-day rotation semantics.
-    - No uninstall behavior beyond messaging.
-    - No uninstall behavior beyond messaging.
+    - Index schema and `IndexStore` are in place (including `path`). Still missing:
+      - OCR integration (e.g. Tesseract or Windows OCR) and STT to populate `ocr_text`/`stt_text`.
+      - Rebuild/re-index subcommand.
+  - **Export:**
+    - Time-range export to a **manifest file** is implemented. Still missing:
+      - Media Foundation–based stitching of segment MP4s into a single MP4 (or GIF).
+      - Quality presets, `--format gif`, and handling of concurrent exports (spec allows; no serialization yet).
+  - **CLI/daemon & ops:**
+    - Named-pipe IPC and graceful shutdown are implemented. Still missing:
+      - Log rotation (7-day single-file rotation per spec).
+      - Uninstall behavior beyond messaging (e.g. `--remove-data`).
   - **Notifications & edge cases:**
-    - Toasts currently go to stderr; no WinRT toast integration.
-    - No explicit handling for disk-full, read-only storage, overlapping segments, long sessions, soak tests, etc.
+    - Toasts go to stderr; no WinRT toast integration.
+    - No explicit handling for disk-full, read-only storage, overlapping segments, long sessions, etc.
 
 - **Next suggested milestones**
-  1. Implement daemon/IPC skeleton:
-     - Named-pipe server, PID file, `record --start/--stop`, `status`.
-  2. Add segmenter + dummy segment files:
-     - Event-based boundaries, retention integration; tests for segment boundary behavior.
-  3. Introduce SQLite index + basic ask:
-     - Schema + keyword search; tests for index create/read and ask no-results/multi-results.
-  4. Implement export pipeline:
-     - Time-range selection, stitching of dummy segments, MP4 output; tests for export rows in `specs/test.md`.
+  1. **Real capture:** Integrate `Windows.Graphics.Capture` and Media Foundation H.264 writer in the daemon; replace dummy `.bin` with MP4 segments; keep index path and retention as-is.
+  2. **Export to MP4/GIF:** Stitch segment MP4s into a single output file (MP4 or GIF) using Media Foundation; respect `export_quality` and `-o`; fail clearly on missing segments.
+  3. **OCR/STT and ask:** Populate `ocr_text`/`stt_text` when segments are closed (or via re-index); keep current keyword ask; add optional semantic/LLM path for advanced mode.
+  4. **Ops and polish:** Log rotation, uninstall flags, Windows toasts, and edge-case handling (disk full, read-only, etc.).
 

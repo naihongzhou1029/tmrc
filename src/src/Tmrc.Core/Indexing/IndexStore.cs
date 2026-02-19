@@ -31,23 +31,52 @@ public sealed class IndexStore
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
 
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = @"
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = @"
 CREATE TABLE IF NOT EXISTS segments (
     id TEXT PRIMARY KEY,
     start_utc TEXT NOT NULL,
     end_utc TEXT NOT NULL,
+    path TEXT,
     ocr_text TEXT,
     stt_text TEXT
 );
 ";
-        cmd.ExecuteNonQuery();
+            cmd.ExecuteNonQuery();
+        }
+
+        // Backwards-compatible upgrade: ensure the 'path' column exists for
+        // databases created before it was introduced.
+        using (var pragma = conn.CreateCommand())
+        {
+            pragma.CommandText = "PRAGMA table_info(segments);";
+            using var reader = pragma.ExecuteReader();
+            var hasPath = false;
+            while (reader.Read())
+            {
+                var name = reader.GetString(1);
+                if (string.Equals(name, "path", StringComparison.OrdinalIgnoreCase))
+                {
+                    hasPath = true;
+                    break;
+                }
+            }
+
+            if (!hasPath)
+            {
+                using var alter = conn.CreateCommand();
+                alter.CommandText = "ALTER TABLE segments ADD COLUMN path TEXT;";
+                alter.ExecuteNonQuery();
+            }
+        }
     }
 
     public void UpsertSegment(
         string id,
         DateTimeOffset start,
         DateTimeOffset end,
+        string path,
         string? ocrText,
         string? sttText)
     {
@@ -56,17 +85,19 @@ CREATE TABLE IF NOT EXISTS segments (
 
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-INSERT INTO segments (id, start_utc, end_utc, ocr_text, stt_text)
-VALUES ($id, $start, $end, $ocr, $stt)
+INSERT INTO segments (id, start_utc, end_utc, path, ocr_text, stt_text)
+VALUES ($id, $start, $end, $path, $ocr, $stt)
 ON CONFLICT(id) DO UPDATE SET
     start_utc = excluded.start_utc,
     end_utc = excluded.end_utc,
+    path = excluded.path,
     ocr_text = excluded.ocr_text,
     stt_text = excluded.stt_text;
 ";
         cmd.Parameters.AddWithValue("$id", id);
         cmd.Parameters.AddWithValue("$start", start.UtcDateTime.ToString("O"));
         cmd.Parameters.AddWithValue("$end", end.UtcDateTime.ToString("O"));
+        cmd.Parameters.AddWithValue("$path", path);
         cmd.Parameters.AddWithValue("$ocr", (object?)ocrText ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$stt", (object?)sttText ?? DBNull.Value);
         cmd.ExecuteNonQuery();
@@ -76,6 +107,7 @@ ON CONFLICT(id) DO UPDATE SET
         string Id,
         DateTimeOffset Start,
         DateTimeOffset End,
+        string? Path,
         string? OcrText,
         string? SttText);
 
@@ -88,7 +120,7 @@ ON CONFLICT(id) DO UPDATE SET
 
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-SELECT id, start_utc, end_utc, ocr_text, stt_text
+SELECT id, start_utc, end_utc, path, ocr_text, stt_text
 FROM segments
 WHERE start_utc <= $to AND end_utc >= $from
 ORDER BY start_utc;
@@ -102,9 +134,10 @@ ORDER BY start_utc;
             var id = reader.GetString(0);
             var start = DateTimeOffset.Parse(reader.GetString(1), null, System.Globalization.DateTimeStyles.RoundtripKind);
             var end = DateTimeOffset.Parse(reader.GetString(2), null, System.Globalization.DateTimeStyles.RoundtripKind);
-            var ocr = reader.IsDBNull(3) ? null : reader.GetString(3);
-            var stt = reader.IsDBNull(4) ? null : reader.GetString(4);
-            results.Add(new SegmentRow(id, start, end, ocr, stt));
+            var path = reader.IsDBNull(3) ? null : reader.GetString(3);
+            var ocr = reader.IsDBNull(4) ? null : reader.GetString(4);
+            var stt = reader.IsDBNull(5) ? null : reader.GetString(5);
+            results.Add(new SegmentRow(id, start, end, path, ocr, stt));
         }
 
         return results;
