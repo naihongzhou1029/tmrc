@@ -55,6 +55,10 @@
   - `Recording/EventSegmenter`:
     - Pure in-memory event-based segmenter that groups active frames into segments and flushes when an idle frame follows activity.
     - Models the spec’s semantics for segment boundaries (items 1.1–1.2) without yet tying into real capture or Media Foundation writers.
+  - `Indexing/IndexStore`:
+    - SQLite-backed index store per session (one `.sqlite` file) using `Microsoft.Data.Sqlite`.
+    - Schema: `segments(id TEXT PRIMARY KEY, start_utc TEXT, end_utc TEXT, ocr_text TEXT, stt_text TEXT)`.
+    - Supports `UpsertSegment` and `QueryByTimeRange` (overlapping segments ordered by start time).
 
 - **CLI (Tmrc.Cli)**
   - `Program.cs`:
@@ -79,8 +83,18 @@
           - `Disk usage (bytes): <value>` from `StorageManager.DiskUsageAsync` (best-effort).
       - `wipe`:
         - Clears and recreates `segments/` under current `storage_root`.
-      - `export`, `ask`:
-        - Still placeholders (print "not yet implemented on Windows").
+      - `ask`:
+        - Implements a **basic keyword-only ask** over the SQLite index:
+          - Usage: `tmrc ask "query" [--since <expr>] [--until <expr>]`.
+          - Default scope: last 24h (computed from `DateTimeOffset.Now` when `--since`/`--until` are omitted).
+          - With `--since`/`--until`: uses `TimeRangeParser.ParseRelative` to interpret expressions like `"1h ago"`, `"yesterday"`, or absolute timestamps.
+          - Binds to the session index at `storage_root/index/<session>.sqlite` via `IndexStore`.
+          - Filters segments whose combined `ocr_text` + `stt_text` contains the query (case-insensitive).
+          - Prints up to 5 matches with citations in the form `YYYY-MM-DD HH:MM:SS [segment-id] snippet`.
+          - When the index file is missing: prints a friendly "Index is empty" message.
+          - When no matches in scope: prints "No matches found ..." and exits 0.
+      - `export`:
+        - Still a placeholder (no Media Foundation-based stitching or GIF/MP4 output yet).
 
 - **Test suite (src/test_suite/Tmrc.Tests)**
   - Test framework: xUnit + Microsoft.NET.Test.Sdk.
@@ -106,6 +120,9 @@
     - `"yesterday"` yields local midnight of the previous day.
     - Absolute `"2025-02-15 14:32:00"` parses to correct local time.
   - **Recording tests** (segment boundaries):
+  - **Indexing tests**:
+    - `IndexingTests`:
+      - "Index schema create and read" creates a temp SQLite DB, inserts a single segment row via `IndexStore.UpsertSegment`, and verifies it can be read back by time-range query with all fields intact.
     - `RecordingTests`:
       - "Segment boundaries (event-based)" feeds a single event frame followed by an idle frame and asserts at least one segment is flushed.
       - "Segment boundaries (burst)" feeds ~31 consecutive event frames followed by an idle frame and asserts exactly one segment spanning the burst is flushed.
@@ -117,7 +134,7 @@
       - `record --stop` stopping the daemon and removing `tmrc.pid`.
     - These tests are currently marked `[Skip]` to avoid flaky E2E behavior in CI, but they serve as a blueprint for future non-skipped daemon tests.
   - **Current test status**:
-    - `devops.ps1 test` → **29 tests passing, 4 tests skipped (daemon E2E), 0 failures.**
+    - `devops.ps1 test` → **30 tests passing, 4 tests skipped (daemon E2E), 0 failures.**
 
 - **Not yet implemented (high level gaps vs spec/test matrix)**
   - **Recording/daemon:**

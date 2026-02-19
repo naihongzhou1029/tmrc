@@ -4,6 +4,8 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Tmrc.Core.Config;
+using Tmrc.Core.Indexing;
+using Tmrc.Core.Recall;
 using Tmrc.Core.Storage;
 using Tmrc.Core.Support;
 
@@ -250,8 +252,112 @@ public static class Program
 
     private static int Ask(string[] args)
     {
-        Console.WriteLine("Ask not yet implemented on Windows.");
-        return 1;
+        if (args.Length == 0)
+        {
+            Console.Error.WriteLine("Usage: tmrc ask \"query\" [--since <expr>] [--until <expr>]");
+            return 1;
+        }
+
+        string? sinceExpr = null;
+        string? untilExpr = null;
+        var queryParts = new System.Collections.Generic.List<string>();
+
+        for (var i = 0; i < args.Length; i++)
+        {
+            var a = args[i];
+            if (a == "--since" && i + 1 < args.Length)
+            {
+                sinceExpr = args[++i];
+            }
+            else if (a == "--until" && i + 1 < args.Length)
+            {
+                untilExpr = args[++i];
+            }
+            else
+            {
+                queryParts.Add(a);
+            }
+        }
+
+        var query = string.Join(" ", queryParts).Trim();
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            Console.Error.WriteLine("Ask query must not be empty.");
+            return 1;
+        }
+
+        var cfg = LoadConfig();
+        var storage = new StorageManager(cfg.StorageRoot);
+        var indexPath = storage.IndexPath(cfg.Session);
+
+        if (!File.Exists(indexPath))
+        {
+            Console.WriteLine("Index is empty; no recordings available for ask.");
+            return 0;
+        }
+
+        var now = DateTimeOffset.Now;
+        DateTimeOffset from;
+        DateTimeOffset to;
+
+        if (sinceExpr is not null || untilExpr is not null)
+        {
+            var fromExpr = sinceExpr ?? "1d ago";
+            var toExpr = untilExpr ?? "now";
+            var range = TimeRangeParser.ParseRelative(fromExpr, toExpr, now);
+            from = range.From;
+            to = range.To;
+        }
+        else
+        {
+            // Default: last 24h.
+            to = now;
+            from = now.AddHours(-24);
+        }
+
+        var store = new IndexStore(indexPath);
+        var rows = store.QueryByTimeRange(from, to);
+
+        if (rows.Count == 0)
+        {
+            Console.WriteLine("No matches found in the given time range.");
+            return 0;
+        }
+
+        var results = new System.Collections.Generic.List<IndexStore.SegmentRow>();
+        var q = query.ToLowerInvariant();
+
+        foreach (var row in rows)
+        {
+            var text = (row.OcrText ?? string.Empty) + " " + (row.SttText ?? string.Empty);
+            if (text.ToLowerInvariant().Contains(q))
+            {
+                results.Add(row);
+            }
+        }
+
+        if (results.Count == 0)
+        {
+            Console.WriteLine("No matches found for query in the given time range.");
+            return 0;
+        }
+
+        var maxToShow = Math.Min(5, results.Count);
+        for (var i = 0; i < maxToShow; i++)
+        {
+            var r = results[i];
+            var tsLocal = r.Start.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss");
+            var snippetSource = r.OcrText ?? r.SttText ?? string.Empty;
+            var snippet = snippetSource.Length > 80 ? snippetSource[..80] + "..." : snippetSource;
+            Console.WriteLine($"{i + 1}. {tsLocal} [{r.Id}] {snippet}");
+        }
+
+        if (results.Count > maxToShow)
+        {
+            Console.WriteLine($"(+{results.Count - maxToShow} more matches)");
+        }
+
+        return 0;
     }
 
     private static int Install(string[] args)
