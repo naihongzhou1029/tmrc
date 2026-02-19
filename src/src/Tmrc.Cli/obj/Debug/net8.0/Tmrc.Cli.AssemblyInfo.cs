@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Tmrc.Cli")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+8c9c6bb18cf716921420b0a495b25b2295116658")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+aef761a7c9c75a2d30d69b985b9c1cc817d224ee")]
 [assembly: System.Reflection.AssemblyProductAttribute("Tmrc.Cli")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Tmrc.Cli")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
