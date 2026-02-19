@@ -20,9 +20,9 @@ Think “Rewind-like,” but CLI-only and self-hosted/local-first.
 
 ## Platform & language
 
-- **First target:** macOS on **Apple Silicon (M-Series)**.
-- **Language:** **Swift** (native SDK access: ScreenCaptureKit, AVFoundation, Vision, etc.).
-- **Later:** Other platforms/systems as needed.
+- **Current implementation:** Windows (CLI + background process).
+- **Language/runtime:** **C# / .NET 8**.
+- **Later:** Other platforms/systems as needed, reusing the same CLI and spec where possible.
 
 ---
 
@@ -61,66 +61,114 @@ Think “Rewind-like,” but CLI-only and self-hosted/local-first.
 
 ## Status
 
-In progress. Implemented: CLI (record start/stop/status, install, uninstall, status, ask, export, rebuild-index), config (YAML + defaults), storage layout and retention, daemon process (start/stop; capture loop with ScreenCaptureKit), SQLite index schema and keyword search, time-range parser, ask engine (empty index, no-matches, citations), **export (stitch MP4/GIF, --from/--to/--query, missing-segment error, quality presets)**. Recording pipeline: ScreenCaptureKit capture (main/combined display), event-based segmenter, segment writer (AVAssetWriter H.264 MP4), segment index upsert and retention eviction; **OCR (Vision) per segment after write**; **permission-revoked detection and toast**; **low-disk check and toast**; **crash recovery (remove incomplete segments on start)**. Log file (single file, 7-day rotation), debug/version in logs. Pending: audio capture, window/app capture mode, optional Unix socket IPC.
+**In progress (Windows/.NET implementation).**
+
+Implemented so far:
+
+- **Core config**:
+  - YAML-based config loader (`config.yaml`) with defaults and overrides for:
+    - `sample_rate_ms`, `session`, `capture_mode`, `display`, `audio_enabled`,
+      `record_when_locked_or_sleeping`, `storage_root`, `index_mode`,
+      `ocr_recognition_languages`, `ask_default_range`, `export_quality`, `log_level`.
+  - `storage_root` default: `%USERPROFILE%\.tmrc`.
+- **Storage layout & retention**:
+  - `storage_root` with:
+    - `index/<session>.sqlite` (schema TBD, not yet implemented),
+    - `segments/`,
+    - `tmrc.pid`, `tmrc.log`.
+  - `RetentionManager` with:
+    - Max age (days) eviction.
+    - Max disk (bytes) eviction (oldest-first).
+  - Disk-usage computation for `storage_root`.
+- **Time-range parsing**:
+  - Absolute: `"YYYY-MM-DD HH:mm:ss"` in local time.
+  - Relative helpers: `"now"`, `"1h ago"` (and other units), `"yesterday"`.
+- **CLI (Windows)**:
+  - `tmrc install` – create storage layout and default config if missing.
+  - `tmrc status` – prints basic status (currently `Recording: no`, plus storage root).
+  - `tmrc wipe` – clears `segments/` under the configured storage root.
+  - `tmrc --version` – prints a Windows dev version (`0.1.0-windows-dev`).
+- **Support**:
+  - Simple file logger (`tmrc.log`) with log levels.
+  - Stub notifier that logs “toast” messages to stderr (Windows toast integration TBD).
+- **Test suite**:
+  - .NET xUnit suite in `src/test_suite/Tmrc.Tests` covering:
+    - Config defaults/overrides and validation.
+    - Storage root resolution, install layout, index path helpers, retention behavior, disk usage.
+    - Time-range parsing (relative/absolute) semantics.
+  - All current tests pass via `./devops.ps1 test`.
+
+Not yet implemented (Windows):
+
+- Screen-capture daemon (Windows.Graphics.Capture or equivalent) and event-based segmenter.
+- Media Foundation-based H.264 segment writer and export pipeline (MP4/GIF, quality presets, query-to-range).
+- SQLite index schema/manager, OCR/STT integration, `ask` engine and citations.
+- Real `record` start/stop semantics, PID file + named-pipe IPC, health/status details.
+- Toast notifications via Windows notification APIs.
 
 ---
 
-## Development command center
+## Development command center (Windows/.NET)
 
-Use a single script, `devops.sh`, as the entry point for local development operations.
+Use a single PowerShell script, `devops.ps1`, as the entry point for local development operations on Windows.
 
 ### Prerequisites
 
-- macOS (first target), ideally Apple Silicon.
-- Xcode Command Line Tools.
-- Swift toolchain available in `PATH`.
-- Optional: `ffprobe` (for media export test validation), `swiftlint` (for lint workflow).
+- Windows 10 1903+ (ideally Windows 11).
+- .NET SDK 8 (the script can install it via `winget` or `choco` if missing).
+- Optional:
+  - `ffprobe` (for media export test validation).
+  - `dotnet-format` (for lint/format workflow).
 
 ### Usage
 
-```bash
-./devops.sh help
-./devops.sh setup
-./devops.sh build
-./devops.sh test
-./devops.sh lint
-./devops.sh record
-./devops.sh status
-./devops.sh dump
-./devops.sh wipe
-./devops.sh clean
+```powershell
+./devops.ps1 help
+./devops.ps1 setup
+./devops.ps1 build
+./devops.ps1 test
+./devops.ps1 lint
+./devops.ps1 record
+./devops.ps1 status
+./devops.ps1 dump
+./devops.ps1 wipe
+./devops.ps1 clean
 ```
 
 ### Command notes
 
-- `setup` / `check-env`: validates development toolchain and optional tools; prints the full environment checklist. Only this command shows the `[ok]` / `[warn]` lines.
-- `build`: runs `swift build` (requires `Package.swift`). Runs setup checks silently first.
-- `test`: runs `swift test` (requires `Package.swift`). Runs setup checks silently first.
-- `lint`: runs `swiftlint` when installed. Runs setup checks silently first.
-- `record`: toggles recording (start if stopped, stop if running). Uses the built `tmrc` binary; no setup output or build log.
-- `status`: prints recording status, storage path, disk usage, and retention policy. Uses the built binary; no setup output or build log.
-- `dump`: exports all recordings to a single timestamped MP4 in the project root (`tmrc_dump_YYYY-MM-DD_HH-MM-SS.mp4`). Uses the built binary; no setup output or build log.
-- `wipe`: removes all segment files and clears the index; the daemon (if running) keeps running. Uses the built binary; no setup output or build log.
-- `clean`: runs `swift package clean` (requires `Package.swift`). Does not run setup.
-
-### Built executable
-
-After `swift build`, the native binary is produced under the Swift Package Manager build directory (not committed; see `.gitignore`). For a **debug** build it is at:
-
-```
-.build/arm64-apple-macosx/debug/tmrc
-```
-
-You can run it directly (e.g. `.build/arm64-apple-macosx/debug/tmrc --version`) or use `swift run tmrc`. For an optimized **release** build, run `swift build -c release`; the binary is then at `.build/arm64-apple-macosx/release/tmrc`.
+- **`setup` / `check-env`**:
+  - Validates Windows + .NET SDK and optional tools.
+  - Attempts to auto-install .NET SDK 8 if missing and adds common `dotnet` install paths to `PATH`.
+  - Only this command shows the `[ok]` / `[warn]` lines.
+- **`build`**:
+  - Runs `dotnet build src/Tmrc.sln`.
+  - Runs setup checks silently first.
+- **`test`**:
+  - Runs `dotnet test src/Tmrc.sln` (executes `Tmrc.Tests` in `src/test_suite`).
+  - Runs setup checks silently first.
+- **`lint`**:
+  - Runs `dotnet-format` on the solution when installed.
+- **`record` / `status` / `dump` / `wipe`**:
+  - Call into the Windows CLI (`Tmrc.Cli`) via `dotnet run`.
+  - `record` is currently a placeholder until the Windows daemon is implemented.
+  - `status` prints basic info (`Recording: no`, storage root).
+  - `dump` exports a wide time range via `tmrc export` (not yet implemented; placeholder).
+  - `wipe` clears all recordings under `segments/` in the current storage root.
+- **`clean`**:
+  - Runs `dotnet clean` on `src/Tmrc.sln`.
 
 ---
 
-## Known issues
+## Known issues / limitations (Windows)
 
-- **Recording can stop when ScreenCaptureKit stream errors**  
-  - **Symptom**: `tmrc status` reports `Recording: yes` for hours, then later `Recording: no`, and the last dumped video is shorter than expected.  
-  - **Observed cause**: `ScreenCaptureKit` sometimes reports an internal `SCStreamErrorDomain` error (for example, code `-3808`) on the capture stream. The daemon treats any `SCStream` `didStopWithError` as fatal and stops the capture loop, but today this is only visible in the macOS unified log, not in `tmrc.log`.  
-  - **How to inspect**:  
-    - Check `~/.tmrc/tmrc.log` for the last `Segment written ...` line and CLI status queries.  
-    - Check the macOS unified log for `tmrc` around that timestamp, e.g. `log show --predicate 'process == "tmrc"' --last 24h --style syslog`, and look for `ScreenCaptureKit` `SCStreamErrorDomain` entries.  
-  - **Planned improvements**: log the underlying `SCStream` error and improve recovery/notifications so this failure mode is visible and, where possible, auto‑recovered.
+- **Recording not yet implemented on Windows**
+  - `tmrc record` and real-time capture are placeholders; there is no running daemon or Media Foundation segment writer yet.
+- **Ask/export not yet wired**
+  - `tmrc ask` and `tmrc export` are not implemented on Windows; there is no index schema or export pipeline yet.
+- **OCR/STT not yet available**
+  - No OCR/STT integration; indexing and semantic search are future work on Windows.
+- **Toast notifications are stubbed**
+  - Notifications are logged to stderr; native Windows toast integration is still pending.
+
+For a more detailed, itemized view of implementation vs plan, see `specs/building_progress.md` and `specs/spec.md` / `specs/test.md`.
