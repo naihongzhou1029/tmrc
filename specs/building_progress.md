@@ -52,6 +52,9 @@
     - Simple file logger with log levels (debug/info/warn/error).
   - `Support/Notifier`:
     - `INotifier` interface and `NoopNotifier` (writes toast messages to stderr only for now).
+  - `Recording/EventSegmenter`:
+    - Pure in-memory event-based segmenter that groups active frames into segments and flushes when an idle frame follows activity.
+    - Models the spec’s semantics for segment boundaries (items 1.1–1.2) without yet tying into real capture or Media Foundation writers.
 
 - **CLI (Tmrc.Cli)**
   - `Program.cs`:
@@ -102,6 +105,10 @@
     - `"1h ago"` relative to a fixed `now` produces `now - 1h`.
     - `"yesterday"` yields local midnight of the previous day.
     - Absolute `"2025-02-15 14:32:00"` parses to correct local time.
+  - **Recording tests** (segment boundaries):
+    - `RecordingTests`:
+      - "Segment boundaries (event-based)" feeds a single event frame followed by an idle frame and asserts at least one segment is flushed.
+      - "Segment boundaries (burst)" feeds ~31 consecutive event frames followed by an idle frame and asserts exactly one segment spanning the burst is flushed.
   - **CLI/daemon tests**:
     - `CliDaemonTests` file documents E2E-style tests for:
       - Daemon start creating `tmrc.pid` and a live process.
@@ -110,7 +117,7 @@
       - `record --stop` stopping the daemon and removing `tmrc.pid`.
     - These tests are currently marked `[Skip]` to avoid flaky E2E behavior in CI, but they serve as a blueprint for future non-skipped daemon tests.
   - **Current test status**:
-    - `devops.ps1 test` → **27 tests passing, 4 tests skipped (daemon E2E), 0 failures.**
+    - `devops.ps1 test` → **29 tests passing, 4 tests skipped (daemon E2E), 0 failures.**
 
 - **Not yet implemented (high level gaps vs spec/test matrix)**
   - **Recording/daemon:**
