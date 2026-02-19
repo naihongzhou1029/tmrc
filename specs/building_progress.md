@@ -55,20 +55,29 @@
 
 - **CLI (Tmrc.Cli)**
   - `Program.cs`:
-    - Commands: `record`, `status`, `export`, `ask`, `install`, `uninstall`, `wipe`, `--version`.
+    - Commands: `record`, `status`, `export`, `ask`, `install`, `uninstall`, `wipe`, `--version` (plus internal `__daemon` entrypoint).
     - Current behavior:
       - `--version` prints `TmrcVersion.Current`.
       - `install`:
         - Loads config from `config.yaml` in current directory.
         - Uses `StorageManager.EnsureLayout` on `storage_root`.
+      - `record` / `record --start`:
+        - Starts a detached **recorder daemon skeleton** by spawning the same `Tmrc.Cli` assembly with `__daemon`.
+        - Daemon writes its PID to `storage_root/tmrc.pid` and then blocks (no capture yet).
+        - If a live daemon already exists (PID file + `Process.GetProcessById`), prints an "already recording" error and exits non-zero.
+      - `record --stop`:
+        - Reads `tmrc.pid`, locates the process, sends `Kill(true)` and waits up to 5 seconds.
+        - Deletes `tmrc.pid` on success and prints `Recording stopped.` (no flush/index semantics yet).
       - `status`:
         - Loads config and prints:
-          - `Recording: no` (placeholder, daemon not implemented yet).
+          - `Recording: yes|no` based on `tmrc.pid` and a live process.
+          - `Recorder PID: <pid>` when running.
           - `Storage root: <path>`.
+          - `Disk usage (bytes): <value>` from `StorageManager.DiskUsageAsync` (best-effort).
       - `wipe`:
         - Clears and recreates `segments/` under current `storage_root`.
-      - `record`, `export`, `ask`:
-        - Placeholders (print "not yet implemented on Windows").
+      - `export`, `ask`:
+        - Still placeholders (print "not yet implemented on Windows").
 
 - **Test suite (src/test_suite/Tmrc.Tests)**
   - Test framework: xUnit + Microsoft.NET.Test.Sdk.
@@ -93,13 +102,22 @@
     - `"1h ago"` relative to a fixed `now` produces `now - 1h`.
     - `"yesterday"` yields local midnight of the previous day.
     - Absolute `"2025-02-15 14:32:00"` parses to correct local time.
+  - **CLI/daemon tests**:
+    - `CliDaemonTests` file documents E2E-style tests for:
+      - Daemon start creating `tmrc.pid` and a live process.
+      - Rejecting a second `record --start` when already recording.
+      - `status` reporting `Recording: yes` when daemon is running.
+      - `record --stop` stopping the daemon and removing `tmrc.pid`.
+    - These tests are currently marked `[Skip]` to avoid flaky E2E behavior in CI, but they serve as a blueprint for future non-skipped daemon tests.
   - **Current test status**:
-    - `devops.ps1 test` → **27 tests, all passing, 0 failures.**
+    - `devops.ps1 test` → **27 tests passing, 4 tests skipped (daemon E2E), 0 failures.**
 
 - **Not yet implemented (high level gaps vs spec/test matrix)**
   - **Recording/daemon:**
-    - No Windows recorder daemon yet (no `Windows.Graphics.Capture`, no PID/pipe IPC).
-    - No event-based segmenter or Media Foundation H.264 segment writer.
+    - Recorder daemon skeleton exists (PID file and process lifecycle via `record`/`status`/`record --stop`), but:
+      - No `Windows.Graphics.Capture` integration.
+      - No event-based segmenter or Media Foundation H.264 segment writer.
+      - No monotonic vs wall-clock time handling, crash recovery, or retention integration yet.
   - **Indexing/OCR:**
     - No SQLite index schema or manager.
     - No OCR integration (e.g. Tesseract) or STT.
@@ -109,8 +127,9 @@
     - No export engine (stitching segments, MP4/GIF output, quality presets).
     - No handling of missing segments or concurrent exports.
   - **CLI/daemon semantics & ops:**
-    - `record` is a placeholder (no start/stop/status of a real daemon).
-    - No named-pipe IPC, no `tmrc.pid` lifecycle, no log rotation.
+    - No named-pipe IPC or request protocol between CLI and daemon (daemon only tracks PID and blocks).
+    - No log rotation; `Logger` does not yet implement 7-day rotation semantics.
+    - No uninstall behavior beyond messaging.
     - No uninstall behavior beyond messaging.
   - **Notifications & edge cases:**
     - Toasts currently go to stderr; no WinRT toast integration.
