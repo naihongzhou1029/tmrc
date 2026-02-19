@@ -1,5 +1,8 @@
 using System;
+using System.Diagnostics;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 using Tmrc.Core.Config;
 using Tmrc.Core.Storage;
 using Tmrc.Core.Support;
@@ -38,6 +41,8 @@ public static class Program
             case "--version":
                 Console.WriteLine(TmrcVersion.Current);
                 return 0;
+            case "__daemon":
+                return RunDaemon();
             default:
                 Console.Error.WriteLine($"Unknown command: {cmd}");
                 PrintUsage();
@@ -59,10 +64,155 @@ public static class Program
         return ConfigLoader.LoadFromFile(configPath);
     }
 
+    private static StorageManager CreateStorageManager()
+    {
+        var cfg = LoadConfig();
+        return new StorageManager(cfg.StorageRoot);
+    }
+
+    private static bool TryGetRunningDaemon(
+        StorageManager storage,
+        out int pid,
+        out Process? process)
+    {
+        pid = 0;
+        process = null;
+
+        if (!File.Exists(storage.PidFilePath))
+        {
+            return false;
+        }
+
+        var text = File.ReadAllText(storage.PidFilePath).Trim();
+        if (!int.TryParse(text, out pid))
+        {
+            return false;
+        }
+
+        try
+        {
+            var proc = Process.GetProcessById(pid);
+            if (proc.HasExited)
+            {
+                return false;
+            }
+
+            process = proc;
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private static int Record(string[] args)
     {
-        // Placeholder: recording daemon not yet implemented.
-        Console.WriteLine("Recording is not yet implemented on Windows.");
+        // record           -> start
+        // record --start   -> start
+        // record --stop    -> stop
+        var sub = args.Length > 0 ? args[0] : "--start";
+        return sub switch
+        {
+            "--start" => StartRecording(),
+            "--stop" => StopRecording(),
+            _ => StartRecording()
+        };
+    }
+
+    private static int StartRecording()
+    {
+        var storage = CreateStorageManager();
+
+        if (TryGetRunningDaemon(storage, out var existingPid, out _))
+        {
+            Console.Error.WriteLine(
+                $"Recording is already in progress (PID {existingPid}).");
+            return 1;
+        }
+
+        Directory.CreateDirectory(Path.GetDirectoryName(storage.PidFilePath)!);
+
+        var assemblyPath = typeof(Program).Assembly.Location;
+        ProcessStartInfo psi;
+        if (string.Equals(Path.GetExtension(assemblyPath), ".dll", StringComparison.OrdinalIgnoreCase))
+        {
+            // Framework-dependent deployment: use current host (dotnet) to run the DLL.
+            var host = Environment.ProcessPath ?? "dotnet";
+            psi = new ProcessStartInfo
+            {
+                FileName = host,
+                Arguments = $"\"{assemblyPath}\" __daemon",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WorkingDirectory = Directory.GetCurrentDirectory()
+            };
+        }
+        else
+        {
+            // Self-contained exe case.
+            psi = new ProcessStartInfo
+            {
+                FileName = assemblyPath,
+                Arguments = "__daemon",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WorkingDirectory = Directory.GetCurrentDirectory()
+            };
+        }
+
+        var proc = Process.Start(psi);
+        if (proc is null)
+        {
+            Console.Error.WriteLine("Failed to start recorder daemon.");
+            return 1;
+        }
+
+        // Give daemon a brief moment to write PID file.
+        Task.Delay(250).Wait();
+
+        Console.WriteLine("Recording started.");
+        return 0;
+    }
+
+    private static int StopRecording()
+    {
+        var storage = CreateStorageManager();
+        if (!TryGetRunningDaemon(storage, out var pid, out var proc))
+        {
+            Console.Error.WriteLine("Recording is not currently running.");
+            // Treat as non-fatal; exit code 1 signals "nothing to stop".
+            return 1;
+        }
+
+        try
+        {
+            proc!.Kill(true);
+            if (!proc.WaitForExit(5000))
+            {
+                Console.Error.WriteLine("Recorder daemon did not exit in time.");
+                return 1;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Failed to stop recorder daemon (PID {pid}): {ex.Message}");
+            return 1;
+        }
+
+        try
+        {
+            if (File.Exists(storage.PidFilePath))
+            {
+                File.Delete(storage.PidFilePath);
+            }
+        }
+        catch
+        {
+            // best-effort
+        }
+
+        Console.WriteLine("Recording stopped.");
         return 0;
     }
 
@@ -70,8 +220,25 @@ public static class Program
     {
         var cfg = LoadConfig();
         var storage = new StorageManager(cfg.StorageRoot);
-        Console.WriteLine("Recording: no");
+
+        var isRecording = TryGetRunningDaemon(storage, out var pid, out _);
+        Console.WriteLine($"Recording: {(isRecording ? "yes" : "no")}");
+        if (isRecording)
+        {
+            Console.WriteLine($"Recorder PID: {pid}");
+        }
         Console.WriteLine($"Storage root: {storage.StorageRoot}");
+
+        try
+        {
+            var usage = storage.DiskUsageAsync().GetAwaiter().GetResult();
+            Console.WriteLine($"Disk usage (bytes): {usage}");
+        }
+        catch
+        {
+            // ignore disk usage errors; status still useful
+        }
+
         return 0;
     }
 
@@ -118,6 +285,29 @@ public static class Program
             Directory.CreateDirectory(storage.SegmentsDirectory);
         }
         Console.WriteLine("All recordings wiped (Windows implementation placeholder).");
+        return 0;
+    }
+
+    private static int RunDaemon()
+    {
+        var cfg = LoadConfig();
+        var storage = new StorageManager(cfg.StorageRoot);
+
+        Directory.CreateDirectory(Path.GetDirectoryName(storage.PidFilePath)!);
+
+        var pid = Environment.ProcessId;
+        File.WriteAllText(storage.PidFilePath, pid.ToString());
+
+        // Minimal placeholder daemon loop. Real recording/IPC will be added later phases.
+        try
+        {
+            Thread.Sleep(Timeout.Infinite);
+        }
+        catch (ThreadInterruptedException)
+        {
+            // exit
+        }
+
         return 0;
     }
 }
