@@ -1,9 +1,38 @@
 # Test Items: Time Machine Recall Commander (tmrc)
 
-Table of test cases for review and execution. Fill **Actual Result** and **Pass** when running tests.
+Table of test cases for review and execution. Fill **Pass** when running tests.
 
-| # | Category | Subject | Action Taken | Expected Result | Actual Result | Pass |
-|---|----------|---------|----------------|---------------------|---------------|-----|
+## Part 1: devops.ps1 (Windows development script)
+
+Table of test cases for the PowerShell devops script. Same columns: fill **Actual Result** and **Pass** when running tests.
+
+| # | Category | Subject | Action Taken | Expected Result | Pass |
+|---|----------|---------|----------------|---------------------|-----|
+| D1 | Environment | No arguments (usage) | Run `./devops.ps1` with no command. | Script prints usage (commands: setup, build, test, record, etc.); exits 0. | ✓ |
+| D2 | Environment | Unknown command | Run `./devops.ps1 unknown-cmd`. | Script exits non-zero; prints "Unknown command" and usage. | ✓ |
+| D3 | Environment | DEVOPS_QUIET | Set `$env:DEVOPS_QUIET='1'`; run `./devops.ps1 setup`. | No `[ok]`/`[warn]` or `$ command` lines on stdout; only errors if any. | ✓ |
+| D4 | Setup | setup / check-env | On Windows with .NET SDK and solution present, run `./devops.ps1 setup` (or `check-env`). | Exits 0; output includes "Operating system: Windows", ".NET SDK: ...", "Environment check passed." | ✓ |
+| D5 | Setup | setup without solution | Run `./devops.ps1 setup` from a clone that has no `src\Tmrc.sln`. | Exits non-zero; message indicates Windows solution not found or planning mode. | ✓ |
+| D6 | Setup | config.yaml reported | With no `config.yaml` at project root, run `./devops.ps1 setup`. | Warning about config.yaml not found; other checks still run. With config.yaml present, [ok] for config. | ✓ |
+| D7 | Setup | ffprobe optional | Run setup with ffprobe not in PATH, then with ffprobe in PATH. | Without: warning that ffprobe not found; setup can still pass. With: [ok] for ffprobe. | ✓ |
+| D8 | Build/Test | build | With solution at `src\Tmrc.sln`, run `./devops.ps1 build`. | Script runs `dotnet build` for the solution; exit code matches dotnet build (0 on success). | ✓ |
+| D9 | Build/Test | test | With solution present, run `./devops.ps1 test`. | Script runs `dotnet test` for the solution; exit code matches dotnet test. | ✓ |
+| D10 | Build/Test | clean | Run `./devops.ps1 clean`. | Script runs `dotnet clean` for the solution; exits 0; message indicates artifacts cleaned. | ✓ |
+| D11 | Lint | lint with dotnet-format | With `dotnet-format` in PATH and solution present, run `./devops.ps1 lint`. | Script runs dotnet-format on the solution (or project); exit code matches formatter. | ✓ |
+| D12 | Lint | lint without dotnet-format | With `dotnet-format` not in PATH, run `./devops.ps1 lint`. | Exits non-zero; message says dotnet-format is required and suggests install command. | ✓ |
+| D13 | CLI delegation | record | Run `./devops.ps1 record` (with solution and CLI project present). | Script invokes tmrc CLI `record` via `dotnet run --project ... -- record`; behavior matches tmrc record. | ✓ |
+| D14 | CLI delegation | status | Run `./devops.ps1 status`. | Script invokes tmrc CLI `status`; output reflects daemon state and/or usage. | ✓ |
+| D15 | CLI delegation | dump | Run `./devops.ps1 dump`. | Script runs tmrc export for full range; output file path matches pattern `tmrc_dump_yyyy-MM-dd_HH-mm-ss.mp4` under project root. | ✓ |
+| D16 | CLI delegation | wipe | Run `./devops.ps1 wipe`. | Script invokes tmrc `wipe`; recordings and index removed per tmrc behavior. | ✓ |
+| D17 | CLI delegation | reindex | Run `./devops.ps1 reindex` and `./devops.ps1 reindex --force`. | Script invokes tmrc `reindex` (and passes `--force` through); no "unknown argument" from tmrc. | ✓ |
+| D18 | Help | help command | Run `./devops.ps1 help`. | Same usage output as no-argument run; exits 0. | ✓ |
+
+---
+
+## Part 2: tmrc executable
+
+| # | Category | Subject | Action Taken | Expected Result | Pass |
+|---|----------|---------|----------------|---------------------|-----|
 | 1 | Recording | Sample rate default | Create a config file (or in-memory YAML) with no `sample_rate_ms` key. Call the config loader with that config source. | Assert the loaded config’s `sample_rate_ms` (or equivalent property) equals 100. |
 | 2 | Recording | Sample rate override | Create a config file containing `sample_rate_ms: 16.1`. Call the config loader with that path (or content). | Assert the loaded config’s `sample_rate_ms` equals 16.1. |
 | 3 | Recording | Sample rate invalid | Create a config file with `sample_rate_ms: 0` (or negative). Call the config loader. | Assert load fails with validation error, or the loader returns a sensible default (e.g. 100); no crash. |
@@ -99,7 +128,6 @@ Table of test cases for review and execution. Fill **Actual Result** and **Pass*
 
 - **Action Taken:** What to do in order (create files, run commands, call APIs).
 - **Expected Result:** How to verify (assert in code, inspect file/log, check exit code, probe media).
-- **Actual Result:** Fill when the test is executed (e.g. "Passed", "Failed: ...", or brief description).
 - **Pass:** Use e.g. ✓ / ✗ or Yes / No after execution.
 - Items 14–15, 26, 45–46, 55–56, 84 may require real capture, permissions, or long run; mark as E2E/soak as needed.
 - Add or remove rows as you refine; renumber if desired.

@@ -168,6 +168,7 @@ function Check-Env {
     }
 
     Assert-Windows
+    Assert-DotNetSolution
 
     $failures = 0
 
@@ -216,8 +217,24 @@ function Check-Env {
     if (Has-Command 'dotnet-format') {
         Write-Ok "dotnet-format (code formatter) found"
     } else {
-        Write-Warn "dotnet-format not found (optional). Install with:"
-        Write-Host "  dotnet tool install -g dotnet-format"
+        Write-Warn "dotnet-format not found (optional). Install with: dotnet tool install -g dotnet-format"
+    }
+
+    $sln = Join-Path $ProjectRoot 'src\Tmrc.sln'
+    if ((Test-Path $sln) -and $ver) {
+        Write-Ok "Restoring NuGet packages for solution..."
+        try {
+            & dotnet restore $sln
+            if ($LASTEXITCODE -eq 0) {
+                Write-Ok "NuGet packages restored."
+            } else {
+                Write-Warn "dotnet restore failed; build may fail with NU1100. Check network and NuGet sources."
+                $failures++
+            }
+        } catch {
+            Write-Warn "dotnet restore failed: $($_.Exception.Message)"
+            $failures++
+        }
     }
 
     if ($failures -gt 0) {
@@ -235,6 +252,7 @@ function Invoke-DotNet {
     )
     Show-Cmd -Cmd $Cmd
     & $Cmd[0] $Cmd[1..($Cmd.Length - 1)]
+    return $LASTEXITCODE
 }
 
 function Invoke-TmrcCli {
@@ -252,21 +270,24 @@ function Invoke-TmrcCli {
     }
 
     $cmd = @('dotnet', 'run', '--project', $proj, '--') + $CliArgs
-    Invoke-DotNet -Cmd $cmd
+    $code = Invoke-DotNet -Cmd $cmd
+    if ($code -ne 0) { exit $code }
 }
 
 function Cmd-Build {
     Check-Env -Quiet
     Assert-DotNetSolution
     $sln = Join-Path $ProjectRoot 'src\Tmrc.sln'
-    Invoke-DotNet -Cmd @('dotnet', 'build', $sln)
+    $code = Invoke-DotNet -Cmd @('dotnet', 'build', $sln)
+    if ($code -ne 0) { exit $code }
 }
 
 function Cmd-Test {
     Check-Env -Quiet
     Assert-DotNetSolution
     $sln = Join-Path $ProjectRoot 'src\Tmrc.sln'
-    Invoke-DotNet -Cmd @('dotnet', 'test', $sln)
+    $code = Invoke-DotNet -Cmd @('dotnet', 'test', $sln)
+    if ($code -ne 0) { exit $code }
 }
 
 function Cmd-Lint {
@@ -274,11 +295,12 @@ function Cmd-Lint {
     Assert-DotNetSolution
 
     if (Has-Command 'dotnet-format') {
-        $sln = Join-Path $ProjectRoot 'windows\Tmrc.sln'
-        Invoke-DotNet -Cmd @('dotnet-format', $sln)
+        $sln = Join-Path $ProjectRoot 'src\Tmrc.sln'
+        $code = Invoke-DotNet -Cmd @('dotnet-format', $sln)
+        if ($code -ne 0) { exit $code }
     } else {
         Write-Err "dotnet-format is required for lint command."
-        Write-Host "Install with: dotnet tool install -g dotnet-format"
+        Write-Err "Install with: dotnet tool install -g dotnet-format"
         exit 1
     }
 }
@@ -308,8 +330,9 @@ function Cmd-Reindex {
 function Cmd-Clean {
     Assert-DotNetSolution
     $sln = Join-Path $ProjectRoot 'src\Tmrc.sln'
-    Invoke-DotNet -Cmd @('dotnet', 'clean', $sln)
+    $code = Invoke-DotNet -Cmd @('dotnet', 'clean', $sln)
     Write-Ok "dotnet artifacts cleaned."
+    if ($code -ne 0) { exit $code }
 }
 
 if (-not $Command) {
