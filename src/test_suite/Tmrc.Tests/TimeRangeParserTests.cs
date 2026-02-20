@@ -15,6 +15,9 @@ public class TimeRangeParserTests
 
         Assert.Equal(now.AddHours(-1), start);
         Assert.Equal(new DateTimeOffset(2025, 2, 14, 0, 0, 0, TimeSpan.FromHours(8)), yesterdayStart);
+
+        var from1000d = TimeRangeParser.ParseRelative("1000d", "now", now).From;
+        Assert.Equal(now.AddDays(-1000), from1000d);
     }
 
     [Fact(DisplayName = "Time range parsing absolute")]

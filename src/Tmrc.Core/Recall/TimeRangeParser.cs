@@ -76,6 +76,25 @@ public static class TimeRangeParser
             }
         }
 
+        // Shorthand without "ago" (e.g. "1000d", "2h") for shell-friendly args that must not contain spaces
+        if (expr.Length >= 2 && double.TryParse(expr[..^1], NumberStyles.Float, CultureInfo.InvariantCulture, out var amountShort))
+        {
+            var unitChar = expr[^1];
+            if (amountShort >= 0)
+            {
+                var delta = unitChar switch
+                {
+                    's' => TimeSpan.FromSeconds(amountShort),
+                    'm' => TimeSpan.FromMinutes(amountShort),
+                    'h' => TimeSpan.FromHours(amountShort),
+                    'd' => TimeSpan.FromDays(amountShort),
+                    _ => default(TimeSpan?)
+                };
+                if (delta.HasValue)
+                    return now - delta.Value;
+            }
+        }
+
         if (string.Equals(expr, "yesterday", StringComparison.OrdinalIgnoreCase))
         {
             var local = now.ToLocalTime();

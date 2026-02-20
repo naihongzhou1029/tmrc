@@ -133,16 +133,23 @@ public static class Program
 
     private static int Record(string[] args)
     {
-        // record           -> start
-        // record --start   -> start
-        // record --stop    -> stop
-        var sub = args.Length > 0 ? args[0] : "--start";
-        return sub switch
-        {
-            "--start" => StartRecording(),
-            "--stop" => StopRecording(),
-            _ => StartRecording()
-        };
+        // record (no args) -> toggle
+        // record --start   -> start only
+        // record --stop    -> stop only
+        var sub = args.Length > 0 ? args[0] : null;
+        if (string.Equals(sub, "--start", StringComparison.OrdinalIgnoreCase))
+            return StartRecording();
+        if (string.Equals(sub, "--stop", StringComparison.OrdinalIgnoreCase))
+            return StopRecording();
+        return ToggleRecording();
+    }
+
+    private static int ToggleRecording()
+    {
+        var storage = CreateStorageManager();
+        if (TryGetRunningDaemon(storage, out _, out _))
+            return StopRecording();
+        return StartRecording();
     }
 
     private static int StartRecording()
@@ -461,8 +468,25 @@ public static class Program
         var rows = store.QueryByTimeRange(range.From, range.To);
         if (rows.Count == 0)
         {
-            Console.Error.WriteLine("No segments found in the requested time range.");
-            return 1;
+            var all = store.ListAllSegments();
+            if (all.Count > 0)
+            {
+                var inRange = new List<IndexStore.SegmentRow>();
+                foreach (var row in all)
+                {
+                    if (row.Start <= range.To && row.End >= range.From)
+                        inRange.Add(row);
+                }
+                rows = inRange;
+            }
+            if (rows.Count == 0)
+            {
+                if (all.Count > 0)
+                    Console.Error.WriteLine("No segments found in the requested time range. The index has {0} segment(s) outside this range; try a wider --from/--to.", all.Count);
+                else
+                    Console.Error.WriteLine("No segments found; index is empty. Run 'tmrc record' to capture, then 'tmrc status' to verify.");
+                return 1;
+            }
         }
 
         var ordered = new List<IndexStore.SegmentRow>();

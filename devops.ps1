@@ -355,7 +355,7 @@ function Cmd-Status {
 function Cmd-Dump {
     $timestamp = Get-Date -Format 'yyyy-MM-dd_HH-mm-ss'
     $outPath = Join-Path $ProjectRoot "tmrc_dump_${timestamp}.mp4"
-    Invoke-TmrcCli -CliArgs @('export', '--from', '1000d ago', '--to', 'now', '-o', $outPath)
+    Invoke-TmrcCli -CliArgs @('export', '--from', '1000d', '--to', 'now', '-o', $outPath)
 }
 
 function Cmd-Wipe {
