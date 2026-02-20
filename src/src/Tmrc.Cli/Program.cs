@@ -11,6 +11,8 @@ using Tmrc.Core.Recall;
 using Tmrc.Core.Storage;
 using Tmrc.Core.Support;
 using Tmrc.Core.Recording;
+using Tmrc.Cli.Capture;
+using Tmrc.Cli.Recording;
 
 namespace Tmrc.Cli;
 
@@ -551,11 +553,34 @@ public static class Program
         var segmenter = new EventSegmenter();
         var flushedSegments = new List<EventSegmenter.Segment>();
         var frameIndex = 0;
-
-        // Simple simulated activity model: 30% of frames have "events".
-        var random = new Random();
         var sampleIntervalMs = Math.Max(1, (int)cfg.SampleRateMs);
         var baseTime = DateTimeOffset.Now;
+
+        ScreenCapture? screenCapture = null;
+        var useRealCapture = false;
+        try
+        {
+            screenCapture = new ScreenCapture(diffThreshold: 500_000);
+            useRealCapture = true;
+            logger.Info("Using real screen capture (GDI).");
+        }
+        catch (Exception ex)
+        {
+            logger.Info($"Real capture unavailable ({ex.Message}); using simulated.");
+        }
+
+        var useMp4 = Mp4SegmentWriter.IsAvailable();
+        if (useMp4)
+        {
+            logger.Info("Using MP4 segment writer (FFmpeg).");
+        }
+        else
+        {
+            logger.Info("FFmpeg not found; writing .bin segments.");
+        }
+
+        var segmentFrames = new List<byte[]>();
+        var random = new Random();
 
         // Basic retention policy aligning with spec defaults (7 days, 50 GB).
         var retention = new RetentionManager(
@@ -616,13 +641,42 @@ public static class Program
         logger.Info("tmrc daemon starting.");
         ipcThread.Start();
 
-        // Simulated recording loop: feeds frames into the event-based segmenter,
-        // writes dummy segment files, and records them into the index.
+        // Recording loop: real capture (GDI) or simulated; event-based segmenter; MP4 or .bin output.
         while (!shutdownToken.IsCancellationRequested)
         {
             flushedSegments.Clear();
+            bool hasEvent;
+            byte[]? frameBgra = null;
+            int frameWidth = 0, frameHeight = 0;
 
-            var hasEvent = random.NextDouble() < 0.3;
+            if (useRealCapture && screenCapture != null)
+            {
+                try
+                {
+                    var (bgra, evt) = screenCapture.CaptureFrame();
+                    hasEvent = evt;
+                    if (bgra.Length > 0)
+                    {
+                        frameBgra = bgra;
+                        frameWidth = screenCapture.Width;
+                        frameHeight = screenCapture.Height;
+                        if (hasEvent)
+                        {
+                            segmentFrames.Add(bgra);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.Warn($"Capture frame failed: {ex.Message}");
+                    hasEvent = false;
+                }
+            }
+            else
+            {
+                hasEvent = random.NextDouble() < 0.3;
+            }
+
             segmenter.OnFrame(frameIndex, hasEvent, flushedSegments);
 
             foreach (var seg in flushedSegments)
@@ -630,19 +684,43 @@ public static class Program
                 var start = baseTime.AddMilliseconds(seg.StartFrame * sampleIntervalMs);
                 var end = baseTime.AddMilliseconds(seg.EndFrame * sampleIntervalMs);
                 var id = Guid.NewGuid().ToString("N");
-
-                var fileName = $"{start.UtcDateTime:yyyyMMdd_HHmmssfff}_{id}.bin";
+                var writeMp4 = useMp4 && segmentFrames.Count > 0 && frameWidth > 0 && frameHeight > 0;
+                var ext = writeMp4 ? ".mp4" : ".bin";
+                var fileName = $"{start.UtcDateTime:yyyyMMdd_HHmmssfff}_{id}{ext}";
                 var path = Path.Combine(storage.SegmentsDirectory, fileName);
 
                 try
                 {
-                    File.WriteAllText(path, $"tmrc simulated segment {id} from {start:O} to {end:O}");
-                    indexStore.UpsertSegment(id, start, end, path, ocrText: null, sttText: null);
-                    logger.Info($"Segment recorded: {id} {start:O} - {end:O}");
+                    if (writeMp4)
+                    {
+                        var fps = 1000.0 / sampleIntervalMs;
+                        if (Mp4SegmentWriter.Write(segmentFrames, frameWidth, frameHeight, path, fps))
+                        {
+                            indexStore.UpsertSegment(id, start, end, path, ocrText: null, sttText: null);
+                            logger.Info($"Segment recorded: {id} {start:O} - {end:O} (MP4)");
+                        }
+                        else
+                        {
+                            logger.Error($"FFmpeg failed for segment {id}; writing placeholder.");
+                            var binPath = Path.Combine(storage.SegmentsDirectory, $"{start.UtcDateTime:yyyyMMdd_HHmmssfff}_{id}.bin");
+                            File.WriteAllText(binPath, $"tmrc segment {id}");
+                            indexStore.UpsertSegment(id, start, end, binPath, null, null);
+                        }
+                    }
+                    else
+                    {
+                        File.WriteAllText(path, $"tmrc segment {id} from {start:O} to {end:O}");
+                        indexStore.UpsertSegment(id, start, end, path, ocrText: null, sttText: null);
+                        logger.Info($"Segment recorded: {id} {start:O} - {end:O}");
+                    }
                 }
                 catch (Exception ex)
                 {
                     logger.Error($"Failed to write segment {id}: {ex.Message}");
+                }
+                finally
+                {
+                    segmentFrames.Clear();
                 }
             }
 
@@ -664,6 +742,7 @@ public static class Program
             Thread.Sleep(sampleIntervalMs);
         }
 
+        screenCapture?.Dispose();
         logger.Info("tmrc daemon shutting down.");
 
         try

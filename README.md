@@ -98,12 +98,16 @@ Implemented so far:
     - Time-range parsing (relative/absolute) semantics.
   - All current tests pass via `./devops.ps1 test`.
 
+Implemented (Windows, this phase):
+
+- **Real screen capture** via GDI BitBlt; event-based segmenter with frame-diff detection.
+- **MP4 segment writer** via FFmpeg (BMP sequence → libx264); segments stored as `.mp4` when FFmpeg is on PATH, else `.bin` placeholder.
+
 Not yet implemented (Windows):
 
-- Screen-capture daemon (Windows.Graphics.Capture or equivalent) and event-based segmenter.
-- Media Foundation-based H.264 segment writer and export pipeline (MP4/GIF, quality presets, query-to-range).
-- SQLite index schema/manager, OCR/STT integration, `ask` engine and citations.
-- Real `record` start/stop semantics, PID file + named-pipe IPC, health/status details.
+- Optional upgrade to Windows.Graphics.Capture; Media Foundation–based H.264 (or keep FFmpeg).
+- Export pipeline: stitch segment MP4s into a single MP4/GIF (quality presets, query-to-range).
+- OCR/STT integration to populate index; optional semantic/LLM for ask.
 - Toast notifications via Windows notification APIs.
 
 ---
@@ -162,8 +166,7 @@ Use a single PowerShell script, `devops.ps1`, as the entry point for local devel
 
 ## Known issues / limitations (Windows)
 
-- **Recording not yet implemented on Windows**
-  - `tmrc record` and real-time capture are placeholders; there is no running daemon or Media Foundation segment writer yet.
+- **Recording** uses GDI capture and FFmpeg for MP4; optional Windows.Graphics.Capture and Media Foundation are not yet integrated.
 - **Ask/export not yet wired**
   - `tmrc ask` and `tmrc export` are not implemented on Windows; there is no index schema or export pipeline yet.
 - **OCR/STT not yet available**

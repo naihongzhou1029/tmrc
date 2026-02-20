@@ -11,7 +11,7 @@
 - **Tooling**
   - `devops.ps1 setup`:
     - Verifies Windows, checks/installs **.NET SDK 8**, wires `dotnet` into `PATH` if needed.
-    - Checks for `config.yaml`, `ffprobe` (optional), and `dotnet-format` (optional).
+    - Checks for `config.yaml`, `ffprobe` (optional), `ffmpeg` (optional; used for MP4 segment encoding when on PATH), and `dotnet-format` (optional).
   - `devops.ps1 build`:
     - Runs `dotnet build src/Tmrc.sln`.
   - `devops.ps1 test`:
@@ -72,7 +72,7 @@
         - Uses `StorageManager.EnsureLayout` on `storage_root`.
       - `record` / `record --start`:
         - Starts a detached **recorder daemon** by spawning the same `Tmrc.Cli` assembly with `__daemon`.
-        - Daemon writes PID to `storage_root/tmrc.pid`, runs a **named-pipe server** (`tmrc-daemon`) for control, and a **simulated recording loop** (see below).
+        - Daemon writes PID to `storage_root/tmrc.pid`, runs a **named-pipe server** (`tmrc-daemon`) for control, and a **real or simulated recording loop** (see daemon below).
         - If a live daemon already exists (PID file + `Process.GetProcessById`), prints "already in progress" and exits non-zero.
       - `record --stop`:
         - Prefer **graceful shutdown**: connects to named pipe, sends `shutdown`; waits up to 5 s for daemon exit.
@@ -81,7 +81,7 @@
       - **Daemon (`__daemon`)**:
         - Writes PID file; creates `Logger` (storage root log file, level from config).
         - **IPC thread**: `NamedPipeServerStream("tmrc-daemon")` accepts connections; on `shutdown` command, sets cancellation and replies `ok`.
-        - **Recording loop** (simulated): uses `EventSegmenter` at `sample_rate_ms`; 30% of frames marked as "event"; on flush, writes dummy `.bin` segment under `segments/` (filename `yyyyMMdd_HHmmssfff_<id>.bin`), calls `IndexStore.UpsertSegment(id, start, end, path, null, null)`, then runs `RetentionManager.EvictIfNeeded` (7 days, 50 GB defaults). Loop exits when shutdown requested; daemon deletes PID file and logs shutdown.
+        - **Recording loop**: Uses **real screen capture** when available (GDI BitBlt via `ScreenCapture`); otherwise simulated (30% event). Event detection: frame-diff threshold for real capture. On flush, writes segment as **MP4** (when FFmpeg on PATH) via `Mp4SegmentWriter` (BMP sequence → FFmpeg libx264), else `.bin` placeholder. Filename `yyyyMMdd_HHmmssfff_<id>.mp4` or `.bin`. Index and retention unchanged (7 days, 50 GB).
       - `status`:
         - Loads config and prints:
           - `Recording: yes|no` based on `tmrc.pid` and a live process.
@@ -126,7 +126,7 @@
     - `"1h ago"` relative to a fixed `now` produces `now - 1h`.
     - `"yesterday"` yields local midnight of the previous day.
     - Absolute `"2025-02-15 14:32:00"` parses to correct local time.
-  - **Recording tests** (segment boundaries):
+  - **Recording tests** (segment boundaries; see RecordingTests below).
   - **Indexing tests**:
     - `IndexingTests`:
       - "Index schema create and read" creates a temp SQLite DB, inserts a single segment row via `IndexStore.UpsertSegment` (including `path`), and verifies it can be read back by time-range query with all fields intact (id, start, end, path, ocr_text, stt_text).
@@ -143,12 +143,15 @@
   - **Current test status**:
     - `devops.ps1 test` → **30 tests passing, 4 tests skipped (daemon E2E), 0 failures.**
 
+- **Implemented (real capture + MP4 segments)**
+  - **Tmrc.Cli/Native/GdiNative.cs**: GDI P/Invoke (GetWindowDC, GetWindowRect, BitBlt, GetDIBits, CreateCompatibleDC/CreateCompatibleBitmap, DeleteDC/DeleteObject, RECT, BITMAPINFO) for screen capture.
+  - **Tmrc.Cli/Capture/ScreenCapture.cs**: Captures primary display via BitBlt at sample rate; returns BGRA buffer and `HasEvent` via frame-diff threshold; `Dispose()` releases DCs and bitmap.
+  - **Tmrc.Cli/Recording/Mp4SegmentWriter.cs**: `Write(frames, width, height, outputPath, fps)` encodes BGRA frames to MP4 via FFmpeg (temp BMP sequence → libx264 yuv420p); `IsAvailable()` probes for `ffmpeg` on PATH.
+  - **Daemon**: On startup, tries `ScreenCapture` (real GDI capture); on failure, uses simulated 30% event model. If `Mp4SegmentWriter.IsAvailable()`, segments are written as `.mp4`; otherwise `.bin`. Index stores segment path; export and retention work for both extensions.
+
 - **Not yet implemented (high level gaps vs spec/test matrix)**
   - **Recording/capture:**
-    - Daemon has IPC, simulated loop, event-based segmenter, retention, and index updates. Still missing:
-      - `Windows.Graphics.Capture` (or equivalent) for real screen capture.
-      - Media Foundation H.264 segment writer (real MP4 segments instead of dummy `.bin`).
-      - Monotonic vs wall-clock time handling, crash recovery semantics.
+    - Optional upgrade to `Windows.Graphics.Capture` (better performance/window capture); monotonic vs wall-clock; crash recovery semantics.
   - **Indexing/OCR:**
     - Index schema and `IndexStore` are in place (including `path`). Still missing:
       - OCR integration (e.g. Tesseract or Windows OCR) and STT to populate `ocr_text`/`stt_text`.
@@ -166,8 +169,8 @@
     - No explicit handling for disk-full, read-only storage, overlapping segments, long sessions, etc.
 
 - **Next suggested milestones**
-  1. **Real capture:** Integrate `Windows.Graphics.Capture` and Media Foundation H.264 writer in the daemon; replace dummy `.bin` with MP4 segments; keep index path and retention as-is.
-  2. **Export to MP4/GIF:** Stitch segment MP4s into a single output file (MP4 or GIF) using Media Foundation; respect `export_quality` and `-o`; fail clearly on missing segments.
+  1. ~~**Real capture:** Integrate capture and MP4 segments.~~ Done: GDI capture + FFmpeg MP4 segments; optional WGC upgrade later.
+  2. **Export to MP4/GIF:** Stitch segment MP4s into a single output file (MP4 or GIF); respect `export_quality` and `-o`; fail clearly on missing segments.
   3. **OCR/STT and ask:** Populate `ocr_text`/`stt_text` when segments are closed (or via re-index); keep current keyword ask; add optional semantic/LLM path for advanced mode.
   4. **Ops and polish:** Log rotation, uninstall flags, Windows toasts, and edge-case handling (disk full, read-only, etc.).
 
