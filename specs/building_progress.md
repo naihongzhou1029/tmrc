@@ -1,6 +1,6 @@
 ## Windows/.NET build progress
 
-*Last synced: 2025-02-20. All four milestones done: real capture + MP4, export to MP4/GIF, OCR (Tesseract), ops and polish (log rotation, uninstall --remove-data, Windows toasts, TryProbeWritable, disk-full handling). Tests: 33 passed, 4 skipped (daemon E2E).*
+*Last synced: 2025-02-20. Eight milestones done: real capture + MP4, export to MP4/GIF, OCR (Tesseract), ops and polish, export by query, reindex, configurable OCR languages, debug mode. Tests: 35 passed, 4 skipped (daemon E2E).*
 
 - **Repo layout**
   - Swift/macOS package (`Package.swift`, `Sources/`, `Tests/tmrcTests/`, `devops.sh`) **removed**.
@@ -70,7 +70,7 @@
 
 - **CLI (Tmrc.Cli)**
   - `Program.cs`:
-    - Commands: `record`, `status`, `export`, `ask`, `install`, `uninstall`, `wipe`, `--version` (plus internal `__daemon` entrypoint).
+    - Commands: `record`, `status`, `export`, `ask`, `install`, `uninstall`, `wipe`, `reindex`, `--version` (plus internal `__daemon` entrypoint). Global flag: `--debug` (or env `TMRC_DEBUG=1`) enables verbose logging; daemon uses Debug level when so started.
     - Current behavior:
       - `--version` prints `TmrcVersion.Current`.
       - `install`:
@@ -98,6 +98,8 @@
         - Stops the daemon if running (IPC then Kill fallback), then with `--remove-data` deletes `storage_root` recursively; otherwise prints that data is present and to use `--remove-data` to delete.
       - `wipe`:
         - Clears and recreates `segments/` under current `storage_root`.
+      - `reindex [--force]`:
+        - Re-runs OCR on existing MP4 segments in the session index (Tesseract + FFmpeg required). Default: only segments with no `ocr_text`; `--force` re-indexes all. Prints summary (indexed / skipped / OCR failed).
       - `ask`:
         - **Basic keyword-only ask** over the SQLite index (works on real index data produced by the daemon):
           - Usage: `tmrc ask "query" [--since <expr>] [--until <expr>]`.
@@ -164,17 +166,16 @@
   - **Recording/capture:**
     - Optional upgrade to `Windows.Graphics.Capture` (better performance/window capture); monotonic vs wall-clock; crash recovery semantics.
   - **Indexing/OCR:**
-    - **OCR:** When Tesseract and FFmpeg are on PATH, daemon runs OCR on each closed MP4 segment (first frame → PNG → Tesseract) and upserts `ocr_text`; `tmrc ask` then matches on that text. STT still not implemented. Still missing:
-      - Rebuild/re-index subcommand (re-run OCR on existing segments).
-      - Optional Windows.Media.Ocr or configurable OCR languages (config has `ocr_recognition_languages`; Tesseract CLI uses default/lang flag TBD).
-  - **Export:**
-    - Time-range export to **MP4 or GIF** is implemented (FFmpeg concat + re-encode; quality presets; `--format gif`). Manifest-only export via `--format manifest`. Still missing:
-      - Export by query (`--query "..."`) to one merged range.
-      - Concurrent export limits (spec allows multiple exports; no serialization).
+    - **OCR:** When Tesseract and FFmpeg are on PATH, daemon runs OCR on each closed MP4 segment (first frame → PNG → Tesseract) and upserts `ocr_text`; **configurable languages** via `config.yaml` → `ocr_recognition_languages` (BCP 47 / locale mapped to Tesseract -l: eng, chi_tra, chi_sim, jpn, kor or pass-through). **Reindex:** `tmrc reindex [--force]` re-runs OCR using same config. STT still not implemented. Still missing: optional Windows.Media.Ocr.
+  - **Export:** Time-range and **query-driven export** are implemented. `tmrc export --query "..." -o <path> [--since/--until]` finds segments matching the query (keyword over OCR/STT), merges earliest–latest time range, and stitches that span to MP4/GIF/manifest. Default scope for query is last 24h. Still missing: concurrent export limits (spec allows multiple exports; no serialization).
 
 - **Next suggested milestones**
   1. ~~**Real capture:** Integrate capture and MP4 segments.~~ Done: GDI capture + FFmpeg MP4 segments; optional WGC upgrade later.
   2. ~~**Export to MP4/GIF:** Stitch segment MP4s into a single output file (MP4 or GIF); respect `export_quality` and `-o`; fail clearly on missing segments.~~ Done: VideoExport + CLI `--format mp4|gif|manifest`.
   3. ~~**OCR/STT and ask:** Populate `ocr_text`/`stt_text` when segments are closed (or via re-index); keep current keyword ask.~~ Done: Tesseract OCR on each MP4 segment (FFmpeg extract frame + Tesseract CLI); ask already keyword-over-index. STT and re-index subcommand still TBD.
   4. ~~**Ops and polish:** Log rotation, uninstall flags, Windows toasts, and edge-case handling (disk full, read-only, etc.).~~ Done: 7-day log rotation; uninstall --remove-data; WindowsToastNotifier (PowerShell+WinRT); TryProbeWritable at daemon start; toast and exit on write IOException.
+  5. ~~**Export by query:** One merged range from query matches.~~ Done: `tmrc export --query "..." -o <path> [--since/--until]`; keyword match over index, merge min(start)–max(end), stitch all segments in that span.
+  6. ~~**Reindex subcommand:** Re-run OCR on existing segments.~~ Done: `tmrc reindex [--force]`; `IndexStore.ListAllSegments()`; default skip segments that already have `ocr_text`, `--force` re-OCR all MP4 segments in index.
+  7. ~~**Configurable OCR languages:**~~ Done: `ocr_recognition_languages` from config passed to Tesseract; BCP 47 / locale mapped to Tesseract codes (en-US→eng, zh-Hant→chi_tra, zh-Hans→chi_sim, ja-JP→jpn, ko-KR→kor); daemon and reindex use config.
+  8. ~~**Debug mode (spec 10.2):**~~ Done: `tmrc --debug <command>` or `TMRC_DEBUG=1` sets verbose logging; daemon uses Debug log level when env set; Logger.Debug(); frame/segment activity logged at Debug.
 

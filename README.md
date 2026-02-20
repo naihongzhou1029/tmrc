@@ -88,9 +88,11 @@ Implemented so far:
   - `tmrc uninstall [--remove-data]` – stop the daemon if running; with `--remove-data`, delete the storage root.
   - `tmrc status` – prints basic status (Recording yes/no, storage root, disk usage).
   - `tmrc wipe` – clears `segments/` under the configured storage root.
+  - `tmrc reindex [--force]` – re-runs OCR on existing MP4 segments in the index (Tesseract + FFmpeg required). By default only segments with no OCR text are processed; `--force` re-indexes all.
   - `tmrc --version` – prints a Windows dev version (`0.1.0-windows-dev`).
 - **Support**:
-  - Simple file logger (`tmrc.log`) with log levels.
+  - Simple file logger (`tmrc.log`) with log levels (debug, info, warn, error).
+  - **Debug mode:** `tmrc --debug <command>` or `TMRC_DEBUG=1` enables verbose logging: daemon uses Debug log level and emits frame/segment activity. Useful for support and troubleshooting.
   - Stub notifier that logs “toast” messages to stderr (Windows toast integration TBD).
 - **Test suite**:
   - .NET xUnit suite in `src/test_suite/Tmrc.Tests` covering:
@@ -106,17 +108,17 @@ Implemented (Windows, this phase):
 
 Implemented (Windows, export):
 
-- **Export to MP4/GIF:** `tmrc export --from <expr> --to <expr> -o <path> [--format mp4|gif|manifest]`. Default format is **mp4**. FFmpeg stitches segment MP4s into a single file; quality presets (low/medium/high) from config `export_quality`. Use `--format manifest` to write a text manifest of segment paths only.
+- **Export to MP4/GIF:** `tmrc export (--from <expr> --to <expr> | --query "..." [--since <expr>] [--until <expr>]) -o <path> [--format mp4|gif|manifest]`. Default format is **mp4**. Time-range export uses the given range; **query export** finds segments matching the query (same keyword search as `tmrc ask`), merges their time range (earliest start to latest end), and exports that span. Default scope for `--query` is last 24h; use `--since`/`--until` to override. FFmpeg stitches segment MP4s into a single file; quality presets (low/medium/high) from config `export_quality`. Use `--format manifest` to write a text manifest of segment paths only.
 
 Implemented (Windows, indexing/ask):
 
-- **OCR:** When **Tesseract** and FFmpeg are on PATH, the recorder daemon runs OCR on the first frame of each closed MP4 segment and stores text in the index (`ocr_text`). `tmrc ask` then matches queries against this text (keyword search). Without Tesseract, segments are still recorded and export works; ask has no text to search.
+- **OCR:** When **Tesseract** and FFmpeg are on PATH, the recorder daemon runs OCR on the first frame of each closed MP4 segment and stores text in the index (`ocr_text`). Languages are configurable via `config.yaml` → `ocr_recognition_languages` (BCP 47 / locale, e.g. `en-US`, `zh-Hant`, `zh-Hans`); values are mapped to Tesseract `-l` codes (eng, chi_tra, chi_sim, jpn, kor, or pass-through). Default: `["en-US", "zh-Hant", "zh-Hans"]`. `tmrc ask` matches queries against this text (keyword search). Without Tesseract, segments are still recorded and export works; ask has no text to search.
+- **Reindex:** `tmrc reindex [--force]` re-runs OCR on segments already in the index using the same config languages (improves UX without re-recording; requires Tesseract and FFmpeg).
 
 Not yet implemented (Windows):
 
 - Optional upgrade to Windows.Graphics.Capture; Media Foundation–based H.264 (or keep FFmpeg).
-- Export by query (e.g. `tmrc export --query "..."`) to one merged range.
-- STT (speech-to-text) and re-index subcommand; optional semantic/LLM for ask.
+- STT (speech-to-text); optional semantic/LLM for ask.
 
 ---
 

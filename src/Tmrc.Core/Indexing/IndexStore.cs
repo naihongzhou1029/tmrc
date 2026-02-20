@@ -142,5 +142,37 @@ ORDER BY start_utc;
 
         return results;
     }
+
+    /// <summary>
+    /// Returns all segments in the index, ordered by start time. Used by reindex to iterate over existing segments.
+    /// </summary>
+    public IReadOnlyList<SegmentRow> ListAllSegments()
+    {
+        var results = new List<SegmentRow>();
+
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+SELECT id, start_utc, end_utc, path, ocr_text, stt_text
+FROM segments
+ORDER BY start_utc;
+";
+
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            var id = reader.GetString(0);
+            var start = DateTimeOffset.Parse(reader.GetString(1), null, System.Globalization.DateTimeStyles.RoundtripKind);
+            var end = DateTimeOffset.Parse(reader.GetString(2), null, System.Globalization.DateTimeStyles.RoundtripKind);
+            var path = reader.IsDBNull(3) ? null : reader.GetString(3);
+            var ocr = reader.IsDBNull(4) ? null : reader.GetString(4);
+            var stt = reader.IsDBNull(5) ? null : reader.GetString(5);
+            results.Add(new SegmentRow(id, start, end, path, ocr, stt));
+        }
+
+        return results;
+    }
 }
 

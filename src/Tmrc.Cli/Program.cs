@@ -29,6 +29,18 @@ public static class Program
             return 1;
         }
 
+        if (string.Equals(args[0], "--debug", StringComparison.OrdinalIgnoreCase))
+        {
+            Environment.SetEnvironmentVariable("TMRC_DEBUG", "1", EnvironmentVariableTarget.Process);
+            args = args.Length == 1 ? Array.Empty<string>() : args[1..];
+        }
+
+        if (args.Length == 0)
+        {
+            PrintUsage();
+            return 1;
+        }
+
         var cmd = args[0];
         var tail = args[1..];
 
@@ -48,6 +60,8 @@ public static class Program
                 return Uninstall(tail);
             case "wipe":
                 return Wipe(tail);
+            case "reindex":
+                return Reindex(tail);
             case "--version":
                 Console.WriteLine(TmrcVersion.Current);
                 return 0;
@@ -63,8 +77,9 @@ public static class Program
     private static void PrintUsage()
     {
         Console.WriteLine("tmrc (Windows) - Time Machine Recall Commander");
-        Console.WriteLine("Usage: tmrc <command> [options]");
-        Console.WriteLine("Commands: record, status, export, ask, install, uninstall, wipe, --version");
+        Console.WriteLine("Usage: tmrc [--debug] <command> [options]");
+        Console.WriteLine("Commands: record, status, export, ask, install, uninstall, wipe, reindex, --version");
+        Console.WriteLine("  --debug    Enable verbose logging (same as TMRC_DEBUG=1). Daemon inherits when started with tmrc --debug record.");
     }
 
     private static TmrcConfig LoadConfig()
@@ -263,6 +278,9 @@ public static class Program
     {
         string? fromExpr = null;
         string? toExpr = null;
+        string? query = null;
+        string? sinceExpr = null;
+        string? untilExpr = null;
         string? outputPath = null;
         string format = "mp4";
 
@@ -277,6 +295,18 @@ public static class Program
             {
                 toExpr = args[++i];
             }
+            else if (a == "--query" && i + 1 < args.Length)
+            {
+                query = args[++i];
+            }
+            else if (a == "--since" && i + 1 < args.Length)
+            {
+                sinceExpr = args[++i];
+            }
+            else if (a == "--until" && i + 1 < args.Length)
+            {
+                untilExpr = args[++i];
+            }
             else if ((a == "-o" || a == "--output") && i + 1 < args.Length)
             {
                 outputPath = args[++i];
@@ -289,13 +319,26 @@ public static class Program
 
         if (string.IsNullOrWhiteSpace(outputPath))
         {
-            Console.Error.WriteLine("Usage: tmrc export --from <expr> --to <expr> -o <outputPath> [--format mp4|gif|manifest]");
+            Console.Error.WriteLine("Usage: tmrc export (--from <expr> --to <expr> | --query \"...\" [--since <expr>] [--until <expr>]) -o <outputPath> [--format mp4|gif|manifest]");
             return 1;
         }
 
         if (format != "mp4" && format != "gif" && format != "manifest")
         {
             Console.Error.WriteLine("--format must be mp4, gif, or manifest.");
+            return 1;
+        }
+
+        var useQuery = !string.IsNullOrWhiteSpace(query);
+        if (useQuery && (!string.IsNullOrWhiteSpace(fromExpr) || !string.IsNullOrWhiteSpace(toExpr)))
+        {
+            Console.Error.WriteLine("Do not use --from/--to together with --query. Use either time range or query.");
+            return 1;
+        }
+
+        if (!useQuery && (string.IsNullOrWhiteSpace(fromExpr) || string.IsNullOrWhiteSpace(toExpr)))
+        {
+            Console.Error.WriteLine("Provide either --from and --to, or --query.");
             return 1;
         }
 
@@ -310,24 +353,65 @@ public static class Program
         }
 
         var now = DateTimeOffset.Now;
-        if (string.IsNullOrWhiteSpace(fromExpr) || string.IsNullOrWhiteSpace(toExpr))
-        {
-            Console.Error.WriteLine("Both --from and --to must be provided for export.");
-            return 1;
-        }
-
-        TimeRange range;
-        try
-        {
-            range = TimeRangeParser.ParseRelative(fromExpr, toExpr, now);
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"Failed to parse time range: {ex.Message}");
-            return 1;
-        }
-
         var store = new IndexStore(indexPath);
+        TimeRange range;
+
+        if (useQuery)
+        {
+            DateTimeOffset from;
+            DateTimeOffset to;
+            if (sinceExpr is not null || untilExpr is not null)
+            {
+                var since = sinceExpr ?? "1d ago";
+                var until = untilExpr ?? "now";
+                var scope = TimeRangeParser.ParseRelative(since, until, now);
+                from = scope.From;
+                to = scope.To;
+            }
+            else
+            {
+                to = now;
+                from = now.AddHours(-24);
+            }
+
+            var scopeRows = store.QueryByTimeRange(from, to);
+            var q = query!.Trim().ToLowerInvariant();
+            var matches = new List<IndexStore.SegmentRow>();
+            foreach (var row in scopeRows)
+            {
+                var text = (row.OcrText ?? string.Empty) + " " + (row.SttText ?? string.Empty);
+                if (text.ToLowerInvariant().Contains(q))
+                    matches.Add(row);
+            }
+
+            if (matches.Count == 0)
+            {
+                Console.Error.WriteLine("No segments matched the query in the given time scope.");
+                return 1;
+            }
+
+            var mergedFrom = matches[0].Start;
+            var mergedTo = matches[0].End;
+            foreach (var r in matches)
+            {
+                if (r.Start < mergedFrom) mergedFrom = r.Start;
+                if (r.End > mergedTo) mergedTo = r.End;
+            }
+            range = new TimeRange(mergedFrom, mergedTo);
+        }
+        else
+        {
+            try
+            {
+                range = TimeRangeParser.ParseRelative(fromExpr!, toExpr!, now);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Failed to parse time range: {ex.Message}");
+                return 1;
+            }
+        }
+
         var rows = store.QueryByTimeRange(range.From, range.To);
         if (rows.Count == 0)
         {
@@ -609,6 +693,70 @@ public static class Program
         return 0;
     }
 
+    private static int Reindex(string[] args)
+    {
+        var force = false;
+        for (var i = 0; i < args.Length; i++)
+        {
+            if (args[i] == "--force")
+            {
+                force = true;
+                break;
+            }
+        }
+
+        var cfg = LoadConfig();
+        var storage = new StorageManager(cfg.StorageRoot);
+        var indexPath = storage.IndexPath(cfg.Session);
+
+        if (!File.Exists(indexPath))
+        {
+            Console.Error.WriteLine("No index found; run recording first or use tmrc install.");
+            return 1;
+        }
+
+        if (!SegmentOcr.IsAvailable())
+        {
+            Console.Error.WriteLine("Tesseract and FFmpeg are required for reindex. Install both and ensure they are on PATH.");
+            return 1;
+        }
+
+        var store = new IndexStore(indexPath);
+        var all = store.ListAllSegments();
+        var processed = 0;
+        var skipped = 0;
+        var failed = 0;
+
+        foreach (var row in all)
+        {
+            if (string.IsNullOrWhiteSpace(row.Path) || !string.Equals(Path.GetExtension(row.Path), ".mp4", StringComparison.OrdinalIgnoreCase))
+            {
+                skipped++;
+                continue;
+            }
+            if (!File.Exists(row.Path))
+            {
+                skipped++;
+                continue;
+            }
+            if (!force && !string.IsNullOrEmpty(row.OcrText))
+            {
+                skipped++;
+                continue;
+            }
+
+            var ocrText = SegmentOcr.Recognize(row.Path, cfg.OcrRecognitionLanguages);
+            store.UpsertSegment(row.Id, row.Start, row.End, row.Path, ocrText ?? row.OcrText, row.SttText);
+            if (ocrText != null)
+                processed++;
+            else
+                failed++;
+        }
+
+        Console.WriteLine($"Reindex complete: {processed} segment(s) indexed, {skipped} skipped, {failed} OCR failed.");
+        return 0;
+    }
+
     private static void TrySendDaemonShutdown()
     {
         try
@@ -651,7 +799,10 @@ public static class Program
         var pid = Environment.ProcessId;
         File.WriteAllText(storage.PidFilePath, pid.ToString());
 
-        var logger = new Logger(storage.LogFilePath, ParseLogLevel(cfg.LogLevel));
+        var logLevel = string.Equals(Environment.GetEnvironmentVariable("TMRC_DEBUG"), "1", StringComparison.Ordinal)
+            ? LogLevel.Debug
+            : ParseLogLevel(cfg.LogLevel);
+        var logger = new Logger(storage.LogFilePath, logLevel);
 
         Directory.CreateDirectory(storage.SegmentsDirectory);
 
@@ -797,6 +948,9 @@ public static class Program
 
             segmenter.OnFrame(frameIndex, hasEvent, flushedSegments);
 
+            if (logLevel == LogLevel.Debug && (hasEvent || flushedSegments.Count > 0))
+                logger.Debug($"frame {frameIndex} hasEvent={hasEvent} flushed={flushedSegments.Count}");
+
             foreach (var seg in flushedSegments)
             {
                 var start = baseTime.AddMilliseconds(seg.StartFrame * sampleIntervalMs);
@@ -817,7 +971,7 @@ public static class Program
                             indexStore.UpsertSegment(id, start, end, path, ocrText: null, sttText: null);
                             if (useOcr)
                             {
-                                var ocrText = SegmentOcr.Recognize(path);
+                                var ocrText = SegmentOcr.Recognize(path, cfg.OcrRecognitionLanguages);
                                 if (!string.IsNullOrWhiteSpace(ocrText))
                                 {
                                     indexStore.UpsertSegment(id, start, end, path, ocrText, sttText: null);

@@ -62,6 +62,7 @@ Commands:
   status      Run tmrc status (Windows CLI)
   dump        Export all recordings to a single MP4 via tmrc export
   wipe        Remove all recordings and index via tmrc wipe
+  reindex     Re-run OCR on existing segments (tmrc reindex; optional --force)
   clean       Run dotnet clean for the Windows solution
   help        Show this help message
 
@@ -285,6 +286,10 @@ function Cmd-Wipe {
     Invoke-TmrcCli -CliArgs @('wipe')
 }
 
+function Cmd-Reindex {
+    Invoke-TmrcCli -CliArgs (@('reindex') + $Args)
+}
+
 function Cmd-Clean {
     Assert-DotNetSolution
     $sln = Join-Path $ProjectRoot 'src\Tmrc.sln'
@@ -307,6 +312,7 @@ switch ($Command) {
     'status' { Cmd-Status; break }
     'dump' { Cmd-Dump; break }
     'wipe' { Cmd-Wipe; break }
+    'reindex' { Cmd-Reindex; break }
     'clean' { Cmd-Clean; break }
     'help' { Show-Usage; break }
     default {
