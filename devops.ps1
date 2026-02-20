@@ -385,11 +385,11 @@ switch ($Command) {
     'build' { Cmd-Build; break }
     'test' { Cmd-Test; break }
     'lint' { Cmd-Lint; break }
-    'record' { Cmd-Record; break }
+    'record' { Cmd-Record @Args; break }
     'status' { Cmd-Status; break }
     'dump' { Cmd-Dump; break }
     'wipe' { Cmd-Wipe; break }
-    'reindex' { Cmd-Reindex; break }
+    'reindex' { Cmd-Reindex @Args; break }
     'clean' { Cmd-Clean; break }
     'help' { Show-Usage; break }
     default {
