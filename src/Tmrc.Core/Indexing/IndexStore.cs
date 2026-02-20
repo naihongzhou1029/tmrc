@@ -174,5 +174,23 @@ ORDER BY start_utc;
 
         return results;
     }
+
+    /// <summary>Removes segment rows whose path is in the given list (e.g. after retention eviction). Paths should match stored path exactly.</summary>
+    public void DeleteByPaths(IReadOnlyList<string> paths)
+    {
+        if (paths is null || paths.Count == 0)
+            return;
+
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        foreach (var path in paths)
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "DELETE FROM segments WHERE path = $path;";
+            cmd.Parameters.AddWithValue("$path", path);
+            cmd.ExecuteNonQuery();
+        }
+    }
 }
 

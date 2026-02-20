@@ -139,5 +139,29 @@ ocr_recognition_languages:
         var cfg = ConfigLoader.LoadFromYaml(yaml);
         Assert.Equal(new[] { "ja-JP", "ko-KR" }, cfg.OcrRecognitionLanguages);
     }
+
+    [Fact(DisplayName = "Retention defaults (30 days, 50 GB)")]
+    public void RetentionDefaults()
+    {
+        var cfg = ConfigLoader.LoadFromYaml("");
+        Assert.Equal(30, cfg.RetentionMaxAgeDays);
+        Assert.Equal(50L * 1024 * 1024 * 1024, cfg.RetentionMaxDiskBytes);
+    }
+
+    [Fact(DisplayName = "Retention override from config")]
+    public void RetentionOverride()
+    {
+        var cfg = ConfigLoader.LoadFromYaml("retention_max_age_days: 14\nretention_max_disk_bytes: 1000000000");
+        Assert.Equal(14, cfg.RetentionMaxAgeDays);
+        Assert.Equal(1_000_000_000L, cfg.RetentionMaxDiskBytes);
+    }
+
+    [Fact(DisplayName = "Retention zero disables limit")]
+    public void RetentionZeroAllowed()
+    {
+        var cfg = ConfigLoader.LoadFromYaml("retention_max_age_days: 0\nretention_max_disk_bytes: 0");
+        Assert.Equal(0, cfg.RetentionMaxAgeDays);
+        Assert.Equal(0L, cfg.RetentionMaxDiskBytes);
+    }
 }
 

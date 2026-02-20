@@ -58,5 +58,11 @@ public sealed record class TmrcConfig
     public ExportQuality ExportQuality { get; init; } = ExportQuality.High;
 
     public string LogLevel { get; init; } = "info";
+
+    /// <summary>Max segment age in days; evict older. Default 30. Set to 0 to disable age-based eviction.</summary>
+    public int RetentionMaxAgeDays { get; init; } = 30;
+
+    /// <summary>Max disk usage in bytes for segments; evict oldest when over. Default 50 GB. Set to 0 to disable.</summary>
+    public long RetentionMaxDiskBytes { get; init; } = 50L * 1024 * 1024 * 1024;
 }
 

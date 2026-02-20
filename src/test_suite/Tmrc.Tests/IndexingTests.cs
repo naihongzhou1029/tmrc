@@ -58,5 +58,24 @@ public class IndexingTests
         Assert.Equal("seg-c", list[1].Id);
         Assert.Equal("seg-b", list[2].Id);
     }
+
+    [Fact(DisplayName = "DeleteByPaths removes rows for given paths only")]
+    public void DeleteByPathsRemovesMatchingRows()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "tmrc-index-" + Guid.NewGuid() + ".sqlite");
+        var store = new IndexStore(path);
+
+        var t = new DateTimeOffset(2025, 2, 15, 14, 0, 0, TimeSpan.Zero);
+        store.UpsertSegment("id-a", t, t.AddMinutes(1), "C:/segments/a.mp4", null, null);
+        store.UpsertSegment("id-b", t.AddMinutes(1), t.AddMinutes(2), "C:/segments/b.mp4", null, null);
+        store.UpsertSegment("id-c", t.AddMinutes(2), t.AddMinutes(3), "C:/segments/c.mp4", null, null);
+
+        store.DeleteByPaths(new[] { "C:/segments/b.mp4" });
+
+        var list = store.ListAllSegments();
+        Assert.Equal(2, list.Count);
+        Assert.Equal("id-a", list[0].Id);
+        Assert.Equal("id-c", list[1].Id);
+    }
 }
 

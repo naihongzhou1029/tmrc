@@ -317,12 +317,6 @@ public static class Program
             }
         }
 
-        if (string.IsNullOrWhiteSpace(outputPath))
-        {
-            Console.Error.WriteLine("Usage: tmrc export (--from <expr> --to <expr> | --query \"...\" [--since <expr>] [--until <expr>]) -o <outputPath> [--format mp4|gif|manifest]");
-            return 1;
-        }
-
         if (format != "mp4" && format != "gif" && format != "manifest")
         {
             Console.Error.WriteLine("--format must be mp4, gif, or manifest.");
@@ -410,6 +404,11 @@ public static class Program
                 Console.Error.WriteLine($"Failed to parse time range: {ex.Message}");
                 return 1;
             }
+        }
+
+        if (string.IsNullOrWhiteSpace(outputPath))
+        {
+            outputPath = ExportPathHelper.GetDefaultExportPath(cfg.Session, range, format);
         }
 
         var rows = store.QueryByTimeRange(range.From, range.To);
@@ -851,10 +850,9 @@ public static class Program
         var segmentFrames = new List<byte[]>();
         var random = new Random();
 
-        // Basic retention policy aligning with spec defaults (7 days, 50 GB).
         var retention = new RetentionManager(
-            maxAgeDays: 7,
-            maxDiskBytes: 50L * 1024 * 1024 * 1024);
+            maxAgeDays: cfg.RetentionMaxAgeDays,
+            maxDiskBytes: cfg.RetentionMaxDiskBytes);
 
         using var shutdownCts = new CancellationTokenSource();
         var shutdownToken = shutdownCts.Token;
@@ -1017,13 +1015,14 @@ public static class Program
                 }
             }
 
-            // Apply retention policy after writing new segments.
+            // Apply retention policy after writing new segments; prune index for evicted paths.
             try
             {
-                var evicted = retention.EvictIfNeeded(storage.SegmentsDirectory);
-                if (evicted > 0)
+                var (evictedCount, evictedPaths) = retention.EvictIfNeeded(storage.SegmentsDirectory);
+                if (evictedCount > 0)
                 {
-                    logger.Info($"Retention evicted {evicted} old segment file(s).");
+                    indexStore.DeleteByPaths(evictedPaths);
+                    logger.Info($"Retention evicted {evictedCount} old segment file(s); index pruned.");
                 }
             }
             catch (Exception ex)

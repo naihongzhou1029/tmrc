@@ -138,6 +138,20 @@ public static class ConfigLoader
                         }
                     }
                     break;
+                case "retention_max_age_days":
+                    if (entry.Value is YamlScalarNode ageNode &&
+                        int.TryParse(ageNode.Value, out var maxAge) && maxAge >= 0)
+                    {
+                        builder = builder with { RetentionMaxAgeDays = maxAge };
+                    }
+                    break;
+                case "retention_max_disk_bytes":
+                    if (entry.Value is YamlScalarNode diskNode &&
+                        long.TryParse(diskNode.Value, out var maxDisk) && maxDisk >= 0)
+                    {
+                        builder = builder with { RetentionMaxDiskBytes = maxDisk };
+                    }
+                    break;
             }
         }
 
@@ -174,6 +188,11 @@ public static class ConfigLoader
                 OcrRecognitionLanguages = new[] { "en-US", "zh-Hant", "zh-Hans" }
             };
         }
+
+        if (cfg.RetentionMaxAgeDays < 0)
+            cfg = cfg with { RetentionMaxAgeDays = 30 };
+        if (cfg.RetentionMaxDiskBytes < 0)
+            cfg = cfg with { RetentionMaxDiskBytes = 50L * 1024 * 1024 * 1024 };
 
         return cfg;
     }

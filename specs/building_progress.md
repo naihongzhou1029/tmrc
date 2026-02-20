@@ -1,6 +1,6 @@
 ## Windows/.NET build progress
 
-*Last synced: 2025-02-20. Eight milestones done: real capture + MP4, export to MP4/GIF, OCR (Tesseract), ops and polish, export by query, reindex, configurable OCR languages, debug mode. Tests: 35 passed, 4 skipped (daemon E2E).*
+*Last synced: 2025-02-20. Eleven milestones done: real capture + MP4, export to MP4/GIF, OCR (Tesseract), ops and polish, export by query, reindex, configurable OCR languages, debug mode, default export path, configurable retention, index prune on eviction. Tests: 42 passed, 4 skipped (daemon E2E).*
 
 - **Repo layout**
   - Swift/macOS package (`Package.swift`, `Sources/`, `Tests/tmrcTests/`, `devops.sh`) **removed**.
@@ -23,8 +23,8 @@
   - `Config/TmrcConfig` + `Config/ConfigLoader`:
     - YAML-based config loader with defaults/overrides for:
       - `sample_rate_ms`, `session`, `capture_mode`, `display`, `audio_enabled`,
-        `record_when_locked_or_sleeping`, `storage_root`, `index_mode`,
-        `ocr_recognition_languages`, `ask_default_range`, `export_quality`, `log_level`.
+        `record_when_locked_or_sleeping`, `storage_root`, `retention_max_age_days`, `retention_max_disk_bytes`,
+        `index_mode`, `ocr_recognition_languages`, `ask_default_range`, `export_quality`, `log_level`.
     - `storage_root` default: `%USERPROFILE%\.tmrc`.
     - Validates/normalizes `sample_rate_ms` (> 0, else default 100 ms).
     - Maps `index_mode` to `normal` / `advanced` and rejects invalid values.
@@ -46,6 +46,8 @@
     - Evicts by:
       - **Max age** (days): deletes files older than the threshold.
       - **Max disk bytes**: deletes oldest files until under quota.
+    - **Configurable (spec 2.3):** `retention_max_age_days` and `retention_max_disk_bytes` in config; daemon uses these values. Defaults 30 days, 50 GB; set 0 to disable each limit.
+    - **Index pruning:** `EvictIfNeeded` returns `(DeletedCount, DeletedPaths)`; daemon calls `IndexStore.DeleteByPaths(evictedPaths)` so the index stays in sync with on-disk segments.
   - `Recall/TimeRangeParser`:
     - Absolute parsing:
       - `yyyy-MM-dd HH:mm:ss` (local time, invariant culture).
@@ -64,6 +66,7 @@
   - `Indexing/IndexStore`:
     - SQLite-backed index store per session (one `.sqlite` file) using `Microsoft.Data.Sqlite`.
     - Schema: `segments(id TEXT PRIMARY KEY, start_utc TEXT, end_utc TEXT, path TEXT, ocr_text TEXT, stt_text TEXT)`.
+    - **DeleteByPaths(paths):** removes segment rows whose path is in the list; used after retention eviction so index and segments stay in sync.
     - Backward-compatible migration: adds `path` column via `ALTER TABLE` if missing on existing DBs.
     - Supports `UpsertSegment(id, start, end, path, ocrText, sttText)` and `QueryByTimeRange` (overlapping segments ordered by start time).
     - `SegmentRow` includes `Path` so export can resolve segments to on-disk files without filename guessing.
@@ -87,7 +90,7 @@
       - **Daemon (`__daemon`)**:
         - Writes PID file; creates `Logger` (storage root log file, level from config).
         - **IPC thread**: `NamedPipeServerStream("tmrc-daemon")` accepts connections; on `shutdown` command, sets cancellation and replies `ok`.
-        - **Recording loop**: Uses **real screen capture** when available (GDI BitBlt via `ScreenCapture`); otherwise simulated (30% event). Event detection: frame-diff threshold for real capture. On flush, writes segment as **MP4** (when FFmpeg on PATH) via `Mp4SegmentWriter` (BMP sequence → FFmpeg libx264), else `.bin` placeholder. Filename `yyyyMMdd_HHmmssfff_<id>.mp4` or `.bin`. After writing MP4, **OCR** runs when Tesseract is on PATH: `SegmentOcr` (Tmrc.Cli/Indexing/SegmentOcr.cs) extracts first frame via FFmpeg, runs Tesseract CLI, then upserts `ocr_text` into the index; daemon logs "OCR enabled" or "Tesseract not found" at startup. Index and retention unchanged (7 days, 50 GB).
+        - **Recording loop**: Uses **real screen capture** when available (GDI BitBlt via `ScreenCapture`); otherwise simulated (30% event). Event detection: frame-diff threshold for real capture. On flush, writes segment as **MP4** (when FFmpeg on PATH) via `Mp4SegmentWriter` (BMP sequence → FFmpeg libx264), else `.bin` placeholder. Filename `yyyyMMdd_HHmmssfff_<id>.mp4` or `.bin`. After writing MP4, **OCR** runs when Tesseract is on PATH: `SegmentOcr` (Tmrc.Cli/Indexing/SegmentOcr.cs) extracts first frame via FFmpeg, runs Tesseract CLI, then upserts `ocr_text` into the index; daemon logs "OCR enabled" or "Tesseract not found" at startup. Index and retention from config (defaults 30 days, 50 GB).
       - `status`:
         - Loads config and prints:
           - `Recording: yes|no` based on `tmrc.pid` and a live process.
@@ -108,7 +111,8 @@
           - Binds to session index via `IndexStore`; filters by `ocr_text` + `stt_text` (case-insensitive); up to 5 matches with citations `YYYY-MM-DD HH:MM:SS [segment-id] snippet`.
           - Friendly messages when index missing or no matches.
       - `export`:
-        - **Export to MP4/GIF or manifest:** `tmrc export --from <expr> --to <expr> -o <outputPath> [--format mp4|gif|manifest]`.
+        - **Export to MP4/GIF or manifest:** `tmrc export (--from <expr> --to <expr> | --query "..." [--since/--until]) [-o <outputPath>] [--format mp4|gif|manifest]`.
+        - **Default output path (spec Export 6):** when `-o` is omitted, output is written to current directory with filename `tmrc_export_<session>_<from>_<to>.<ext>` (local time stamps; session sanitized for filesystem).
         - Default format is **mp4**. Parses time range; queries index; resolves segments via `row.Path` (fails if any segment file is missing). For MP4/GIF, all segments must be `.mp4` (clear error if .bin).
         - **VideoExport** (Tmrc.Cli/Export/VideoExport.cs): uses FFmpeg concat demuxer + re-encode; quality from config `export_quality` (low: 720p ~2 Mbps, medium: 1080p ~5 Mbps, high: source ~8 Mbps). GIF via temp MP4 then palette filter.
         - `--format manifest` writes a text manifest only (segment paths in time order). FFmpeg required for mp4/gif; missing FFmpeg gives a clear error.
@@ -140,6 +144,7 @@
   - **Indexing tests**:
     - `IndexingTests`:
       - "Index schema create and read" creates a temp SQLite DB, inserts a single segment row via `IndexStore.UpsertSegment` (including `path`), and verifies it can be read back by time-range query with all fields intact (id, start, end, path, ocr_text, stt_text).
+      - "DeleteByPaths removes rows for given paths only" verifies index pruning after eviction.
     - `RecordingTests`:
       - "Segment boundaries (event-based)" feeds a single event frame followed by an idle frame and asserts at least one segment is flushed.
       - "Segment boundaries (burst)" feeds ~31 consecutive event frames followed by an idle frame and asserts exactly one segment spanning the burst is flushed.
@@ -153,8 +158,9 @@
   - **Ocr tests** (OcrTests.cs):
     - Recognize returns null for non-existent path; returns null for non-MP4 extension.
   - **Storage tests:** TryProbeWritable returns true for writable directory.
+  - **Export tests** (ExportTests.cs): default export path uses cwd, session and range in filename; format extensions (gif, manifest); session name sanitized.
   - **Current test status**:
-    - `devops.ps1 test` → **33 tests passing, 4 tests skipped (daemon E2E), 0 failures.**
+    - `devops.ps1 test` → **42 tests passing, 4 tests skipped (daemon E2E), 0 failures.**
 
 - **Implemented (real capture + MP4 segments)**
   - **Tmrc.Cli/Native/GdiNative.cs**: GDI P/Invoke (GetWindowDC, GetWindowRect, BitBlt, GetDIBits, CreateCompatibleDC/CreateCompatibleBitmap, DeleteDC/DeleteObject, RECT, BITMAPINFO) for screen capture.
@@ -178,4 +184,7 @@
   6. ~~**Reindex subcommand:** Re-run OCR on existing segments.~~ Done: `tmrc reindex [--force]`; `IndexStore.ListAllSegments()`; default skip segments that already have `ocr_text`, `--force` re-OCR all MP4 segments in index.
   7. ~~**Configurable OCR languages:**~~ Done: `ocr_recognition_languages` from config passed to Tesseract; BCP 47 / locale mapped to Tesseract codes (en-US→eng, zh-Hant→chi_tra, zh-Hans→chi_sim, ja-JP→jpn, ko-KR→kor); daemon and reindex use config.
   8. ~~**Debug mode (spec 10.2):**~~ Done: `tmrc --debug <command>` or `TMRC_DEBUG=1` sets verbose logging; daemon uses Debug log level when env set; Logger.Debug(); frame/segment activity logged at Debug.
+  9. ~~**Default export output path (spec Export 6):**~~ Done: when `-o` is omitted, export writes to cwd with generated filename `tmrc_export_<session>_<from>_<to>.<mp4|gif|manifest>`. `ExportPathHelper.GetDefaultExportPath`; unit tests in `ExportTests.cs`.
+  10. ~~**Configurable retention (spec 2.3):**~~ Done: `retention_max_age_days` and `retention_max_disk_bytes` in config.yaml; daemon uses them for RetentionManager. Defaults 30 days, 50 GB; 0 disables. Config tests added.
+  11. ~~**Index prune on retention eviction:**~~ Done: `RetentionManager.EvictIfNeeded` returns `(DeletedCount, DeletedPaths)`; daemon calls `IndexStore.DeleteByPaths(evictedPaths)` so ask/export and reindex never see stale segment rows. StorageTests and IndexingTests updated.
 

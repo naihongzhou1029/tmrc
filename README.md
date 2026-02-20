@@ -68,7 +68,8 @@ Implemented so far:
 - **Core config**:
   - YAML-based config loader (`config.yaml`) with defaults and overrides for:
     - `sample_rate_ms`, `session`, `capture_mode`, `display`, `audio_enabled`,
-      `record_when_locked_or_sleeping`, `storage_root`, `index_mode`,
+      `record_when_locked_or_sleeping`, `storage_root`, `retention_max_age_days`, `retention_max_disk_bytes`,
+      `index_mode`,
       `ocr_recognition_languages`, `ask_default_range`, `export_quality`, `log_level`.
   - `storage_root` default: `%USERPROFILE%\.tmrc`.
 - **Storage layout & retention**:
@@ -77,8 +78,8 @@ Implemented so far:
     - `segments/`,
     - `tmrc.pid`, `tmrc.log`.
   - `RetentionManager` with:
-    - Max age (days) eviction.
-    - Max disk (bytes) eviction (oldest-first).
+    - Max age (days) and max disk (bytes) eviction (oldest-first); configurable via `retention_max_age_days` and `retention_max_disk_bytes` (defaults 30 days, 50 GB).
+    - When segments are evicted, the index is pruned so ask/export and reindex only reference existing files.
   - Disk-usage computation for `storage_root`.
 - **Time-range parsing**:
   - Absolute: `"YYYY-MM-DD HH:mm:ss"` in local time.
@@ -108,7 +109,7 @@ Implemented (Windows, this phase):
 
 Implemented (Windows, export):
 
-- **Export to MP4/GIF:** `tmrc export (--from <expr> --to <expr> | --query "..." [--since <expr>] [--until <expr>]) -o <path> [--format mp4|gif|manifest]`. Default format is **mp4**. Time-range export uses the given range; **query export** finds segments matching the query (same keyword search as `tmrc ask`), merges their time range (earliest start to latest end), and exports that span. Default scope for `--query` is last 24h; use `--since`/`--until` to override. FFmpeg stitches segment MP4s into a single file; quality presets (low/medium/high) from config `export_quality`. Use `--format manifest` to write a text manifest of segment paths only.
+- **Export to MP4/GIF:** `tmrc export (--from <expr> --to <expr> | --query "..." [--since <expr>] [--until <expr>]) [-o <path>] [--format mp4|gif|manifest]`. Default format is **mp4**. When `-o` is omitted, output is written to the current directory with a generated filename (session + time range). Time-range export uses the given range; **query export** finds segments matching the query (same keyword search as `tmrc ask`), merges their time range (earliest start to latest end), and exports that span. Default scope for `--query` is last 24h; use `--since`/`--until` to override. FFmpeg stitches segment MP4s into a single file; quality presets (low/medium/high) from config `export_quality`. Use `--format manifest` to write a text manifest of segment paths only.
 
 Implemented (Windows, indexing/ask):
 

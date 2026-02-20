@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
@@ -15,11 +16,13 @@ public sealed class RetentionManager
         MaxDiskBytes = maxDiskBytes;
     }
 
-    public int EvictIfNeeded(string segmentsDirectory)
+    /// <summary>Evicts segments by age and/or disk quota. Returns count and full paths of deleted files for index pruning.</summary>
+    public (int DeletedCount, IReadOnlyList<string> DeletedPaths) EvictIfNeeded(string segmentsDirectory)
     {
+        var deletedPaths = new List<string>();
         if (!Directory.Exists(segmentsDirectory))
         {
-            return 0;
+            return (0, deletedPaths);
         }
 
         var files = Directory.EnumerateFiles(segmentsDirectory, "*", SearchOption.AllDirectories)
@@ -38,8 +41,10 @@ public sealed class RetentionManager
             {
                 try
                 {
-                    File.Delete(fi.FullName);
+                    var fullPath = fi.FullName;
+                    File.Delete(fullPath);
                     deleted++;
+                    deletedPaths.Add(fullPath);
                     files.Remove(fi);
                 }
                 catch
@@ -64,8 +69,10 @@ public sealed class RetentionManager
 
                     try
                     {
-                        File.Delete(fi.FullName);
+                        var fullPath = fi.FullName;
+                        File.Delete(fullPath);
                         deleted++;
+                        deletedPaths.Add(fullPath);
                         total -= fi.Length;
                         files.Remove(fi);
                     }
@@ -77,7 +84,7 @@ public sealed class RetentionManager
             }
         }
 
-        return deleted;
+        return (deleted, deletedPaths);
     }
 }
 

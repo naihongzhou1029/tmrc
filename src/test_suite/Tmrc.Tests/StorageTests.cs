@@ -85,8 +85,10 @@ public class StorageTests
             File.WriteAllBytes(path2, new byte[100]);
 
             var retention = new RetentionManager(maxAgeDays: 7, maxDiskBytes: 1_000_000);
-            var deleted = retention.EvictIfNeeded(segDir);
-            Assert.Equal(1, deleted);
+            var (deletedCount, deletedPaths) = retention.EvictIfNeeded(segDir);
+            Assert.Equal(1, deletedCount);
+            Assert.Single(deletedPaths);
+            Assert.Equal(Path.GetFullPath(path1), Path.GetFullPath(deletedPaths[0]));
             Assert.False(File.Exists(path1));
             Assert.True(File.Exists(path2));
         }
@@ -111,8 +113,9 @@ public class StorageTests
             File.WriteAllBytes(path, new byte[100]);
 
             var retention = new RetentionManager(maxAgeDays: 7, maxDiskBytes: 1_000_000);
-            var deleted = retention.EvictIfNeeded(segDir);
-            Assert.Equal(0, deleted);
+            var (deletedCount, deletedPaths) = retention.EvictIfNeeded(segDir);
+            Assert.Equal(0, deletedCount);
+            Assert.Empty(deletedPaths);
             Assert.True(File.Exists(path));
         }
         finally
