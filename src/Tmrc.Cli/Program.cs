@@ -162,8 +162,9 @@ public static class Program
         ProcessStartInfo psi;
         if (string.Equals(Path.GetExtension(assemblyPath), ".dll", StringComparison.OrdinalIgnoreCase))
         {
-            // Framework-dependent deployment: use current host (dotnet) to run the DLL.
-            var host = Environment.ProcessPath ?? "dotnet";
+            // Framework-dependent deployment: always use dotnet host for DLL execution.
+            // Environment.ProcessPath may point to an apphost executable under dotnet run.
+            var host = "dotnet";
             psi = new ProcessStartInfo
             {
                 FileName = host,
@@ -193,11 +194,49 @@ public static class Program
             return 1;
         }
 
-        // Give daemon a brief moment to write PID file.
-        Task.Delay(250).Wait();
+        var started = WaitForDaemonStartup(storage, out var pid, TimeSpan.FromSeconds(5));
+        if (!started)
+        {
+            // If child exited immediately, surface that signal in diagnostics.
+            string detail = string.Empty;
+            try
+            {
+                if (proc.HasExited || proc.WaitForExit(200))
+                {
+                    detail = $" Child process exited with code {proc.ExitCode}.";
+                }
+            }
+            catch
+            {
+                // best-effort diagnostics
+            }
 
-        Console.WriteLine("Recording started.");
+            Console.Error.WriteLine("Recorder daemon failed to start." + detail);
+            return 1;
+        }
+
+        Console.WriteLine($"Recording started (PID {pid}).");
         return 0;
+    }
+
+    private static bool WaitForDaemonStartup(
+        StorageManager storage,
+        out int pid,
+        TimeSpan timeout)
+    {
+        var sw = Stopwatch.StartNew();
+        while (sw.Elapsed < timeout)
+        {
+            if (TryGetRunningDaemon(storage, out pid, out _))
+            {
+                return true;
+            }
+
+            Thread.Sleep(50);
+        }
+
+        pid = 0;
+        return false;
     }
 
     private static int StopRecording()
