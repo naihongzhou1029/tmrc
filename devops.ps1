@@ -38,6 +38,13 @@ function Has-Command {
     return [bool](Get-Command $Name -ErrorAction SilentlyContinue)
 }
 
+function Get-DotNetVersion {
+    # Run via cmd so stderr from dotnet host does not surface as PowerShell NativeCommandError.
+    $ver = cmd /c 'dotnet --version 2>nul'
+    if ($ver) { return $ver.Trim() }
+    return $null
+}
+
 function Show-Cmd {
     param([string[]]$Cmd)
     if ($env:DEVOPS_QUIET) { return }
@@ -111,13 +118,13 @@ function Ensure-DotNetInPath {
 }
 
 function Install-DotNetSdk {
-    # Try to ensure it's already reachable first.
     Ensure-DotNetInPath
-    if (Has-Command 'dotnet') {
+    if ((Has-Command 'dotnet') -and (Get-DotNetVersion)) {
         return
     }
 
-    Write-Warn ".NET SDK (dotnet) not found in PATH. Attempting installation..."
+    $reason = if (Has-Command 'dotnet') { "dotnet failed to run" } else { ".NET SDK (dotnet) not found in PATH" }
+    Write-Warn "$reason. Attempting installation..."
 
     if (Has-Command 'winget') {
         $cmd = @('winget', 'install', '--id', 'Microsoft.DotNet.SDK.8', '-e', '--source', 'winget')
@@ -141,13 +148,13 @@ function Install-DotNetSdk {
         return
     }
 
-    # After install, try to pick it up in this session.
     Ensure-DotNetInPath
-    if (Has-Command 'dotnet') {
-        Write-Ok ".NET SDK detected after installation."
+    $ver = Get-DotNetVersion
+    if ($ver) {
+        Write-Ok ".NET SDK detected after installation: $ver"
     } else {
-        Write-Warn "dotnet still not found in PATH in this session."
-        Write-Warn "You may need to open a new terminal, or ensure the dotnet install directory is added to PATH."
+        Write-Warn "dotnet still not found or not working in this session."
+        Write-Warn "Open a new terminal and run setup again, or add the dotnet install directory to PATH."
     }
 }
 
@@ -166,16 +173,24 @@ function Check-Env {
 
     Write-Ok "Operating system: Windows"
 
+    $ver = $null
     if (Has-Command 'dotnet') {
-        $ver = (dotnet --version 2>$null)
+        $ver = Get-DotNetVersion
+    }
+    if ($ver) {
         Write-Ok ".NET SDK: $ver"
     } else {
+        if (Has-Command 'dotnet') {
+            Write-Warn "dotnet is in PATH but failed to run (reinstall .NET SDK if needed)."
+        }
         Install-DotNetSdk
-        if (-not (Has-Command 'dotnet')) {
-            $failures++
-        } else {
-            $ver = (dotnet --version 2>$null)
+        if (Has-Command 'dotnet') {
+            $ver = Get-DotNetVersion
+        }
+        if ($ver) {
             Write-Ok ".NET SDK: $ver"
+        } else {
+            $failures++
         }
     }
 
