@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using Tmrc.Core.Config;
@@ -157,6 +158,39 @@ public class StorageTests
             var ok = mgr.TryProbeWritable(out var err);
             Assert.True(ok);
             Assert.Null(err);
+        }
+        finally
+        {
+            if (Directory.Exists(tmp))
+            {
+                Directory.Delete(tmp, recursive: true);
+            }
+        }
+    }
+
+    [Fact(DisplayName = "Crash recovery removes orphan segment files not in index")]
+    public void CrashRecovery_RemovesOrphanFiles()
+    {
+        var tmp = Path.Combine(Path.GetTempPath(), "tmrc-crash-" + Guid.NewGuid());
+        var segDir = Path.Combine(tmp, "segments");
+        Directory.CreateDirectory(segDir);
+        try
+        {
+            var keptPath = Path.Combine(segDir, "kept.mp4");
+            var orphanPath = Path.Combine(segDir, "orphan.mp4");
+            File.WriteAllBytes(keptPath, new byte[1]);
+            File.WriteAllBytes(orphanPath, new byte[1]);
+
+            var indexedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                Path.GetFullPath(keptPath)
+            };
+
+            var removed = CrashRecovery.CleanOrphanSegmentFiles(segDir, indexedPaths);
+
+            Assert.Equal(1, removed);
+            Assert.True(File.Exists(keptPath));
+            Assert.False(File.Exists(orphanPath));
         }
         finally
         {

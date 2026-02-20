@@ -1,6 +1,6 @@
 ## Windows/.NET build progress
 
-*Last synced: 2025-02-20. Eleven milestones done: real capture + MP4, export to MP4/GIF, OCR (Tesseract), ops and polish, export by query, reindex, configurable OCR languages, debug mode, default export path, configurable retention, index prune on eviction. Tests: 42 passed, 4 skipped (daemon E2E).*
+*Last synced: 2025-02-20. Fourteen milestones done: real capture + MP4, export to MP4/GIF, OCR (Tesseract), ops and polish, export by query, reindex, configurable OCR languages, debug mode, default export path, configurable retention, index prune on eviction, crash recovery, monotonic write_order, STT hook. Tests: 45 passed, 4 skipped (daemon E2E).*
 
 - **Repo layout**
   - Swift/macOS package (`Package.swift`, `Sources/`, `Tests/tmrcTests/`, `devops.sh`) **removed**.
@@ -39,8 +39,6 @@
     - `DiskUsageAsync()`:
       - Computes recursive byte size under `storage_root`.
     - `TryProbeWritable(out errorMessage)`:
-      - Returns true if we can write to the storage root (creates dir, writes and deletes a probe file); false with message on read-only/full.
-    - `TryProbeWritable(out errorMessage)`:
       - Returns true if a probe file can be written and deleted under `storage_root`; used at daemon start to fail fast when storage is read-only or full.
   - `Storage/RetentionManager`:
     - Evicts by:
@@ -48,6 +46,8 @@
       - **Max disk bytes**: deletes oldest files until under quota.
     - **Configurable (spec 2.3):** `retention_max_age_days` and `retention_max_disk_bytes` in config; daemon uses these values. Defaults 30 days, 50 GB; set 0 to disable each limit.
     - **Index pruning:** `EvictIfNeeded` returns `(DeletedCount, DeletedPaths)`; daemon calls `IndexStore.DeleteByPaths(evictedPaths)` so the index stays in sync with on-disk segments.
+  - `Storage/CrashRecovery`:
+    - **CleanOrphanSegmentFiles(segmentsDirectory, indexedFullPaths):** deletes segment files on disk that are not in the index (spec 8.4 crash recovery). Daemon runs this on startup.
   - `Recall/TimeRangeParser`:
     - Absolute parsing:
       - `yyyy-MM-dd HH:mm:ss` (local time, invariant culture).
@@ -65,10 +65,11 @@
     - Models the spec’s semantics for segment boundaries (items 1.1–1.2) without yet tying into real capture or Media Foundation writers.
   - `Indexing/IndexStore`:
     - SQLite-backed index store per session (one `.sqlite` file) using `Microsoft.Data.Sqlite`.
-    - Schema: `segments(id TEXT PRIMARY KEY, start_utc TEXT, end_utc TEXT, path TEXT, ocr_text TEXT, stt_text TEXT)`.
+    - Schema: `segments(id TEXT PRIMARY KEY, start_utc TEXT, end_utc TEXT, path TEXT, ocr_text TEXT, stt_text TEXT, write_order INTEGER)`.
     - **DeleteByPaths(paths):** removes segment rows whose path is in the list; used after retention eviction so index and segments stay in sync.
-    - Backward-compatible migration: adds `path` column via `ALTER TABLE` if missing on existing DBs.
-    - Supports `UpsertSegment(id, start, end, path, ocrText, sttText)` and `QueryByTimeRange` (overlapping segments ordered by start time).
+    - **write_order (spec 8.5):** optional monotonic column for segment ordering; daemon sets it so export/ask order by write_order then start_utc (stable when clock changes). **GetMaxWriteOrder()** returns max for daemon to continue sequence.
+    - Backward-compatible migration: adds `path` and `write_order` columns via `ALTER TABLE` if missing on existing DBs.
+    - Supports `UpsertSegment(id, start, end, path, ocrText, sttText, writeOrder?)` and `QueryByTimeRange` (overlapping segments ordered by write_order then start_utc).
     - `SegmentRow` includes `Path` so export can resolve segments to on-disk files without filename guessing.
 
 - **CLI (Tmrc.Cli)**
@@ -90,7 +91,7 @@
       - **Daemon (`__daemon`)**:
         - Writes PID file; creates `Logger` (storage root log file, level from config).
         - **IPC thread**: `NamedPipeServerStream("tmrc-daemon")` accepts connections; on `shutdown` command, sets cancellation and replies `ok`.
-        - **Recording loop**: Uses **real screen capture** when available (GDI BitBlt via `ScreenCapture`); otherwise simulated (30% event). Event detection: frame-diff threshold for real capture. On flush, writes segment as **MP4** (when FFmpeg on PATH) via `Mp4SegmentWriter` (BMP sequence → FFmpeg libx264), else `.bin` placeholder. Filename `yyyyMMdd_HHmmssfff_<id>.mp4` or `.bin`. After writing MP4, **OCR** runs when Tesseract is on PATH: `SegmentOcr` (Tmrc.Cli/Indexing/SegmentOcr.cs) extracts first frame via FFmpeg, runs Tesseract CLI, then upserts `ocr_text` into the index; daemon logs "OCR enabled" or "Tesseract not found" at startup. Index and retention from config (defaults 30 days, 50 GB).
+        - **Recording loop**: On startup, **crash recovery** runs: `CrashRecovery.CleanOrphanSegmentFiles` removes segment files not in the index. Uses **real screen capture** when available (GDI BitBlt via `ScreenCapture`); otherwise simulated (30% event). Event detection: frame-diff threshold for real capture. On flush, writes segment as **MP4** (when FFmpeg on PATH) via `Mp4SegmentWriter` (BMP sequence → FFmpeg libx264), else `.bin` placeholder. Filename `yyyyMMdd_HHmmssfff_<id>.mp4` or `.bin`. **Monotonic ordering:** daemon passes `write_order` (GetMaxWriteOrder()+1, incrementing) to UpsertSegment so export/ask order is stable. After writing MP4, **OCR** runs when Tesseract is on PATH: `SegmentOcr` extracts first frame via FFmpeg, runs Tesseract CLI, then upserts `ocr_text`; **STT** hook: `SegmentStt.Recognize` is called (stub returns null for now). Index and retention from config (defaults 30 days, 50 GB).
       - `status`:
         - Loads config and prints:
           - `Recording: yes|no` based on `tmrc.pid` and a live process.
@@ -157,10 +158,11 @@
     - These tests are currently marked `[Skip]` to avoid flaky E2E behavior in CI, but they serve as a blueprint for future non-skipped daemon tests.
   - **Ocr tests** (OcrTests.cs):
     - Recognize returns null for non-existent path; returns null for non-MP4 extension.
-  - **Storage tests:** TryProbeWritable returns true for writable directory.
+  - **Storage tests:** TryProbeWritable returns true for writable directory; **CrashRecovery** removes orphan segment files not in index.
+  - **Indexing tests:** GetMaxWriteOrder, ListAllSegments ordering by write_order.
   - **Export tests** (ExportTests.cs): default export path uses cwd, session and range in filename; format extensions (gif, manifest); session name sanitized.
   - **Current test status**:
-    - `devops.ps1 test` → **42 tests passing, 4 tests skipped (daemon E2E), 0 failures.**
+    - `devops.ps1 test` → **45 tests passing, 4 tests skipped (daemon E2E), 0 failures.**
 
 - **Implemented (real capture + MP4 segments)**
   - **Tmrc.Cli/Native/GdiNative.cs**: GDI P/Invoke (GetWindowDC, GetWindowRect, BitBlt, GetDIBits, CreateCompatibleDC/CreateCompatibleBitmap, DeleteDC/DeleteObject, RECT, BITMAPINFO) for screen capture.
@@ -170,10 +172,10 @@
 
   - **Not yet implemented (high level gaps vs spec/test matrix)**
   - **Recording/capture:**
-    - Optional upgrade to `Windows.Graphics.Capture` (better performance/window capture); monotonic vs wall-clock; crash recovery semantics.
+    - Optional upgrade to `Windows.Graphics.Capture` (better performance/window capture). Monotonic ordering and crash recovery are done (write_order, CleanOrphanSegmentFiles).
   - **Indexing/OCR:**
-    - **OCR:** When Tesseract and FFmpeg are on PATH, daemon runs OCR on each closed MP4 segment (first frame → PNG → Tesseract) and upserts `ocr_text`; **configurable languages** via `config.yaml` → `ocr_recognition_languages` (BCP 47 / locale mapped to Tesseract -l: eng, chi_tra, chi_sim, jpn, kor or pass-through). **Reindex:** `tmrc reindex [--force]` re-runs OCR using same config. STT still not implemented. Still missing: optional Windows.Media.Ocr.
-  - **Export:** Time-range and **query-driven export** are implemented. `tmrc export --query "..." -o <path> [--since/--until]` finds segments matching the query (keyword over OCR/STT), merges earliest–latest time range, and stitches that span to MP4/GIF/manifest. Default scope for query is last 24h. Still missing: concurrent export limits (spec allows multiple exports; no serialization).
+    - **OCR:** Tesseract OCR and configurable languages are done. **STT:** `SegmentStt` stub is wired (returns null); daemon calls it so real STT can be plugged in later. Still missing: optional Windows.Media.Ocr fallback when Tesseract fails.
+  - **Export:** Time-range and query-driven export are implemented. Spec allows multiple exports; no serialization (no change needed).
 
 - **Next suggested milestones**
   1. ~~**Real capture:** Integrate capture and MP4 segments.~~ Done: GDI capture + FFmpeg MP4 segments; optional WGC upgrade later.
@@ -187,4 +189,7 @@
   9. ~~**Default export output path (spec Export 6):**~~ Done: when `-o` is omitted, export writes to cwd with generated filename `tmrc_export_<session>_<from>_<to>.<mp4|gif|manifest>`. `ExportPathHelper.GetDefaultExportPath`; unit tests in `ExportTests.cs`.
   10. ~~**Configurable retention (spec 2.3):**~~ Done: `retention_max_age_days` and `retention_max_disk_bytes` in config.yaml; daemon uses them for RetentionManager. Defaults 30 days, 50 GB; 0 disables. Config tests added.
   11. ~~**Index prune on retention eviction:**~~ Done: `RetentionManager.EvictIfNeeded` returns `(DeletedCount, DeletedPaths)`; daemon calls `IndexStore.DeleteByPaths(evictedPaths)` so ask/export and reindex never see stale segment rows. StorageTests and IndexingTests updated.
+  12. ~~**Crash recovery (spec 8.4):**~~ Done: `CrashRecovery.CleanOrphanSegmentFiles`; daemon runs it on startup to remove segment files not in the index. StorageTests added.
+  13. ~~**Monotonic ordering (spec 8.5):**~~ Done: `IndexStore.write_order` column; daemon passes incrementing write_order; QueryByTimeRange/ListAllSegments order by write_order then start_utc. IndexingTests added.
+  14. ~~**STT hook:**~~ Done: `SegmentStt` stub (returns null); daemon calls it so stt_text can be populated when STT is implemented.
 

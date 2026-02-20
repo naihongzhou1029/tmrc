@@ -808,11 +808,23 @@ public static class Program
         var indexPath = storage.IndexPath(cfg.Session);
         var indexStore = new IndexStore(indexPath);
 
+        // Crash recovery (spec 8.4): remove orphan segment files (left by previous crashed run, not in index).
+        var indexedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var row in indexStore.ListAllSegments())
+        {
+            if (!string.IsNullOrEmpty(row.Path))
+                indexedPaths.Add(Path.GetFullPath(row.Path));
+        }
+        var orphanCount = CrashRecovery.CleanOrphanSegmentFiles(storage.SegmentsDirectory, indexedPaths);
+        if (orphanCount > 0)
+            logger.Info($"Crash recovery: removed {orphanCount} orphan segment file(s).");
+
         var segmenter = new EventSegmenter();
         var flushedSegments = new List<EventSegmenter.Segment>();
         var frameIndex = 0;
         var sampleIntervalMs = Math.Max(1, (int)cfg.SampleRateMs);
         var baseTime = DateTimeOffset.Now;
+        long nextWriteOrder = indexStore.GetMaxWriteOrder() + 1;
 
         ScreenCapture? screenCapture = null;
         var useRealCapture = false;
@@ -951,6 +963,7 @@ public static class Program
 
             foreach (var seg in flushedSegments)
             {
+                var writeOrder = nextWriteOrder++;
                 var start = baseTime.AddMilliseconds(seg.StartFrame * sampleIntervalMs);
                 var end = baseTime.AddMilliseconds(seg.EndFrame * sampleIntervalMs);
                 var id = Guid.NewGuid().ToString("N");
@@ -966,13 +979,14 @@ public static class Program
                         var fps = 1000.0 / sampleIntervalMs;
                         if (Mp4SegmentWriter.Write(segmentFrames, frameWidth, frameHeight, path, fps))
                         {
-                            indexStore.UpsertSegment(id, start, end, path, ocrText: null, sttText: null);
+                            var sttText = SegmentStt.IsAvailable() ? SegmentStt.Recognize(path) : null;
+                            indexStore.UpsertSegment(id, start, end, path, ocrText: null, sttText, writeOrder);
                             if (useOcr)
                             {
                                 var ocrText = SegmentOcr.Recognize(path, cfg.OcrRecognitionLanguages);
                                 if (!string.IsNullOrWhiteSpace(ocrText))
                                 {
-                                    indexStore.UpsertSegment(id, start, end, path, ocrText, sttText: null);
+                                    indexStore.UpsertSegment(id, start, end, path, ocrText, sttText, writeOrder);
                                     logger.Info($"Segment recorded: {id} {start:O} - {end:O} (MP4, OCR)");
                                 }
                                 else
@@ -990,13 +1004,13 @@ public static class Program
                             logger.Error($"FFmpeg failed for segment {id}; writing placeholder.");
                             var binPath = Path.Combine(storage.SegmentsDirectory, $"{start.UtcDateTime:yyyyMMdd_HHmmssfff}_{id}.bin");
                             File.WriteAllText(binPath, $"tmrc segment {id}");
-                            indexStore.UpsertSegment(id, start, end, binPath, null, null);
+                            indexStore.UpsertSegment(id, start, end, binPath, null, SegmentStt.IsAvailable() ? SegmentStt.Recognize(binPath) : null, writeOrder);
                         }
                     }
                     else
                     {
                         File.WriteAllText(path, $"tmrc segment {id} from {start:O} to {end:O}");
-                        indexStore.UpsertSegment(id, start, end, path, ocrText: null, sttText: null);
+                        indexStore.UpsertSegment(id, start, end, path, ocrText: null, sttText: SegmentStt.IsAvailable() ? SegmentStt.Recognize(path) : null, writeOrder);
                         logger.Info($"Segment recorded: {id} {start:O} - {end:O}");
                     }
                 }
