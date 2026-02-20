@@ -263,7 +263,7 @@ function Invoke-TmrcCli {
     Check-Env -Quiet
     Assert-DotNetSolution
 
-    $proj = Join-Path $ProjectRoot 'src\src\Tmrc.Cli\Tmrc.Cli.csproj'
+    $proj = Join-Path $ProjectRoot 'src\Tmrc.Cli\Tmrc.Cli.csproj'
     if (-not (Test-Path $proj)) {
         Write-Err "Windows CLI project not found at $proj"
         exit 1
