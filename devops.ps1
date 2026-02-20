@@ -252,7 +252,7 @@ function Invoke-DotNet {
     )
     Show-Cmd -Cmd $Cmd
     & $Cmd[0] $Cmd[1..($Cmd.Length - 1)]
-    return $LASTEXITCODE
+    # No return: output flows to the console; callers read $LASTEXITCODE directly.
 }
 
 function Invoke-TmrcCli {
@@ -270,24 +270,24 @@ function Invoke-TmrcCli {
     }
 
     $cmd = @('dotnet', 'run', '--project', $proj, '--') + $CliArgs
-    $code = Invoke-DotNet -Cmd $cmd
-    if ($code -ne 0) { exit $code }
+    Invoke-DotNet -Cmd $cmd
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
 function Cmd-Build {
     Check-Env -Quiet
     Assert-DotNetSolution
     $sln = Join-Path $ProjectRoot 'src\Tmrc.sln'
-    $code = Invoke-DotNet -Cmd @('dotnet', 'build', $sln)
-    if ($code -ne 0) { exit $code }
+    Invoke-DotNet -Cmd @('dotnet', 'build', $sln)
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
 function Cmd-Test {
     Check-Env -Quiet
     Assert-DotNetSolution
     $sln = Join-Path $ProjectRoot 'src\Tmrc.sln'
-    $code = Invoke-DotNet -Cmd @('dotnet', 'test', $sln)
-    if ($code -ne 0) { exit $code }
+    Invoke-DotNet -Cmd @('dotnet', 'test', $sln)
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
 function Cmd-Lint {
@@ -296,8 +296,8 @@ function Cmd-Lint {
 
     if (Has-Command 'dotnet-format') {
         $sln = Join-Path $ProjectRoot 'src\Tmrc.sln'
-        $code = Invoke-DotNet -Cmd @('dotnet-format', $sln)
-        if ($code -ne 0) { exit $code }
+        Invoke-DotNet -Cmd @('dotnet-format', $sln)
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     } else {
         Write-Err "dotnet-format is required for lint command."
         Write-Err "Install with: dotnet tool install -g dotnet-format"
@@ -330,9 +330,9 @@ function Cmd-Reindex {
 function Cmd-Clean {
     Assert-DotNetSolution
     $sln = Join-Path $ProjectRoot 'src\Tmrc.sln'
-    $code = Invoke-DotNet -Cmd @('dotnet', 'clean', $sln)
+    Invoke-DotNet -Cmd @('dotnet', 'clean', $sln)
     Write-Ok "dotnet artifacts cleaned."
-    if ($code -ne 0) { exit $code }
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
 if (-not $Command) {

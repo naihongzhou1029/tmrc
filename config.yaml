@@ -28,11 +28,11 @@ session: default
 # Overridable via config or env (TBD).
 storage_root: ~/.tmrc/
 
-# Retention: per-session ring-buffer. When limits are reached, oldest segments are evicted first.
-# retention_max_age_days: drop segments older than this many days. Default 30. Set 0 to disable.
-# retention_max_disk_bytes: max total bytes for segments; evict oldest when over. Default 50 GB (53687091200). Set 0 to disable.
-# retention_max_age_days: 30
-# retention_max_disk_bytes: 53687091200
+# Retention: per-session ring-buffer. When limits are reached, oldest segments are evicted first (ring-buffer semantics).
+# retention_max_age_days: drop segments older than this many days. Set 0 to disable age-based eviction.
+# retention_max_disk_bytes: max total bytes for segments; evict oldest first when over. Set 0 to disable disk-quota eviction.
+retention_max_age_days: 30
+retention_max_disk_bytes: 53687091200
 
 # Indexing/recall mode: normal (lighter, no sub-options) or advanced (best UX, sub-options configurable).
 # Advanced = real-time indexing, full OCR, semantic, LLM, multi-match, re-indexing. Normal = lighter defaults throughout.

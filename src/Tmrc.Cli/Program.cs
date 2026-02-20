@@ -264,12 +264,20 @@ public static class Program
         try
         {
             var usage = storage.DiskUsageAsync().GetAwaiter().GetResult();
-            Console.WriteLine($"Disk usage (bytes): {usage}");
+            var usageGb = usage / 1_073_741_824.0;
+            Console.WriteLine($"Disk usage: {usageGb:F1} GB");
         }
         catch
         {
             // ignore disk usage errors; status still useful
         }
+
+        var maxAgeDaysDisplay = cfg.RetentionMaxAgeDays == 0 ? "disabled" : $"{cfg.RetentionMaxAgeDays} days";
+        var maxDiskDisplay = cfg.RetentionMaxDiskBytes == 0
+            ? "disabled"
+            : $"{cfg.RetentionMaxDiskBytes / 1_073_741_824.0:F1} GB";
+        Console.WriteLine($"Retention max age: {maxAgeDaysDisplay}");
+        Console.WriteLine($"Retention max disk: {maxDiskDisplay}");
 
         return 0;
     }
