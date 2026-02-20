@@ -269,7 +269,46 @@ function Invoke-TmrcCli {
         exit 1
     }
 
-    $cmd = @('dotnet', 'run', '--project', $proj, '--') + $CliArgs
+    $buildCmd = @('dotnet', 'build', $proj)
+    $buildOutput = @(& $buildCmd[0] $buildCmd[1..($buildCmd.Length - 1)] 2>&1)
+    
+    if ($LASTEXITCODE -ne 0) {
+        $joinedOutput = ($buildOutput | ForEach-Object { "$_" }) -join "`n"
+        $isKnownCopyLock = $joinedOutput -match 'MSB3027' -and $joinedOutput -match 'MSB3021' -and $joinedOutput -match 'Tmrc\.Core\.dll'
+        
+        if (-not $isKnownCopyLock) {
+            foreach ($line in $buildOutput) { Write-Host $line }
+            exit $LASTEXITCODE
+        }
+
+        $pidMatches = [regex]::Matches($joinedOutput, '\.NET Host \((\d+)\)')
+        $stalePids = @(
+            $pidMatches |
+            ForEach-Object { $_.Groups[1].Value } |
+            Where-Object { $_ -match '^\d+$' } |
+            Sort-Object -Unique
+        )
+        
+        if ($stalePids.Count -eq 0) {
+            foreach ($line in $buildOutput) { Write-Host $line }
+            exit $LASTEXITCODE
+        }
+
+        Write-Warn "Detected stale .NET host lock on Tmrc.Core.dll. Terminating stale process(es) and retrying once..."
+        foreach ($pid in $stalePids) {
+            try {
+                $null = taskkill /PID $pid /F
+                Write-Ok "Stopped stale .NET host PID $pid"
+            } catch {
+                Write-Warn "Failed to stop PID ${pid}: $($_.Exception.Message)"
+            }
+        }
+
+        Invoke-DotNet -Cmd $buildCmd
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    }
+
+    $cmd = @('dotnet', 'run', '--no-build', '--project', $proj, '--') + $CliArgs
     Invoke-DotNet -Cmd $cmd
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
