@@ -1,4 +1,4 @@
-# Test Items: Time Machine Recall Commander (tmrc)
+﻿# Test Items: Time Machine Recall Commander (tmrc)
 
 Table of test cases for review and execution. Fill **Pass** when running tests.
 
@@ -8,25 +8,25 @@ Table of test cases for the PowerShell devops script. Same columns: fill **Actua
 
 | # | Category | Subject | Action Taken | Expected Result | Pass |
 |---|----------|---------|----------------|---------------------|-----|
-| D1 | Environment | No arguments (usage) | Run `./devops.ps1` with no command. | Script prints usage (commands: setup, build, test, record, etc.); exits 0. | Pass |
-| D2 | Environment | Unknown command | Run `./devops.ps1 unknown-cmd`. | Script exits non-zero; prints "Unknown command" and usage. | Pass |
-| D3 | Environment | DEVOPS_QUIET | Set `$env:DEVOPS_QUIET='1'`; run `./devops.ps1 setup`. | No `[ok]`/`[warn]` or `$ command` lines on stdout; only errors if any. | Pass |
-| D4 | Setup | setup / check-env | On Windows with .NET SDK and solution present, run `./devops.ps1 setup` (or `check-env`). | Exits 0; output includes "Operating system: Windows", ".NET SDK: ...", "Environment check passed." | Pass |
-| D5 | Setup | setup without solution | Run `./devops.ps1 setup` from a clone that has no `src\Tmrc.sln`. | Exits non-zero; message indicates Windows solution not found or planning mode. | Pass |
-| D6 | Setup | config.yaml reported | With no `config.yaml` at project root, run `./devops.ps1 setup`. | Warning about config.yaml not found; other checks still run. With config.yaml present, [ok] for config. | Pass |
-| D7 | Setup | ffprobe optional | Run setup with ffprobe not in PATH, then with ffprobe in PATH. | Without: warning that ffprobe not found; setup can still pass. With: [ok] for ffprobe. | Pass |
-| D8 | Build/Test | build | With solution at `src\Tmrc.sln`, run `./devops.ps1 build`. | Script runs `dotnet build` for the solution; exit code matches dotnet build (0 on success). | Pass |
-| D9 | Build/Test | test | With solution present, run `./devops.ps1 test`. | Script runs `dotnet test` for the solution; exit code matches dotnet test. | Pass |
-| D10 | Build/Test | clean | Run `./devops.ps1 clean`. | Script runs `dotnet clean` for the solution; exits 0; message indicates artifacts cleaned. | Pass |
-| D11 | Lint | lint with dotnet-format | With `dotnet-format` in PATH and solution present, run `./devops.ps1 lint`. | Script runs dotnet-format on the solution (or project); exit code matches formatter. | Pass |
-| D12 | Lint | lint without dotnet-format | With `dotnet-format` not in PATH, run `./devops.ps1 lint`. | Exits non-zero; message says dotnet-format is required and suggests install command. | Pass |
-| D13 | CLI delegation | record | Run `./devops.ps1 record` (with solution and CLI project present). | Script invokes tmrc CLI `record` via `dotnet run --project ... -- record`; behavior matches tmrc record. | Pass |
-| D13a | CLI delegation | record + status handshake | Run `./devops.ps1 record`, wait up to 5s, then run `./devops.ps1 status`. | `record` only reports success when daemon is actually alive; `status` reports `Recording: yes` (not a false-positive "started"). | Pass |
-| D14 | CLI delegation | status | Run `./devops.ps1 status`. | Script invokes tmrc CLI `status`; output reflects daemon state and/or usage. | Pass |
-| D15 | CLI delegation | dump | Run `./devops.ps1 dump`. | Script runs tmrc export for full range; output file path matches pattern `tmrc_dump_yyyy-MM-dd_HH-mm-ss.mp4` under project root. | Pass |
-| D16 | CLI delegation | wipe | Run `./devops.ps1 wipe`. | Script invokes tmrc `wipe`; recordings and index removed per tmrc behavior. | Pass |
-| D17 | CLI delegation | reindex | Run `./devops.ps1 reindex` and `./devops.ps1 reindex --force`. | Script invokes tmrc `reindex` (and passes `--force` through); no "unknown argument" from tmrc. | Pass |
-| D18 | Help | help command | Run `./devops.ps1 help`. | Same usage output as no-argument run; exits 0. | Pass |
+| D1 | Environment | No arguments (usage) | Run `./devops.ps1` with no command. | Script prints usage (commands: setup, build, test, record, etc.); exits 0. | |
+| D2 | Environment | Unknown command | Run `./devops.ps1 unknown-cmd`. | Script exits non-zero; prints "Unknown command" and usage. | |
+| D3 | Environment | DEVOPS_QUIET | Set `$env:DEVOPS_QUIET='1'`; run `./devops.ps1 setup`. | No `[ok]`/`[warn]` or `$ command` lines on stdout; only errors if any. | |
+| D4 | Setup | setup / check-env | On Windows with .NET SDK and solution present, run `./devops.ps1 setup` (or `check-env`). | Exits 0; output includes "Operating system: Windows", ".NET SDK: ...", "Environment check passed." | |
+| D5 | Setup | setup without solution | Run `./devops.ps1 setup` from a clone that has no `src\Tmrc.sln`. | Exits non-zero; message indicates Windows solution not found or planning mode. | |
+| D6 | Setup | config.yaml reported | With no `config.yaml` at project root, run `./devops.ps1 setup`. | Warning about config.yaml not found; other checks still run. With config.yaml present, [ok] for config. | |
+| D7 | Setup | ffprobe optional | Run setup with ffprobe not in PATH, then with ffprobe in PATH. | Without: warning that ffprobe not found; setup can still pass. With: [ok] for ffprobe. | |
+| D8 | Build/Test | build | With solution at `src\Tmrc.sln`, run `./devops.ps1 build`. | Script runs `dotnet build` for the solution; exit code matches dotnet build (0 on success). | |
+| D9 | Build/Test | test | With solution present, run `./devops.ps1 test`. | Script runs `dotnet test` for the solution; exit code matches dotnet test. | |
+| D10 | Build/Test | clean | Run `./devops.ps1 clean`. | Script runs `dotnet clean` for the solution; exits 0; message indicates artifacts cleaned. | |
+| D11 | Lint | lint with dotnet-format | With `dotnet-format` in PATH and solution present, run `./devops.ps1 lint`. | Script runs dotnet-format on the solution (or project); exit code matches formatter. | |
+| D12 | Lint | lint without dotnet-format | With `dotnet-format` not in PATH, run `./devops.ps1 lint`. | Exits non-zero; message says dotnet-format is required and suggests install command. | |
+| D13 | CLI delegation | record | Run `./devops.ps1 record` (with solution and CLI project present). | Script invokes tmrc CLI `record` via `dotnet run --project ... -- record`; behavior matches tmrc record. | |
+| D13a | CLI delegation | record + status handshake | Run `./devops.ps1 record`, wait up to 5s, then run `./devops.ps1 status`. | `record` only reports success when daemon is actually alive; `status` reports `Recording: yes` (not a false-positive "started"). | |
+| D14 | CLI delegation | status | Run `./devops.ps1 status`. | Script invokes tmrc CLI `status`; output reflects daemon state and/or usage. | |
+| D15 | CLI delegation | dump | Run `./devops.ps1 dump`. | Script runs tmrc export for full range; output file path matches pattern `tmrc_dump_yyyy-MM-dd_HH-mm-ss.mp4` under project root. | |
+| D16 | CLI delegation | wipe | Run `./devops.ps1 wipe`. | Script invokes tmrc `wipe`; recordings and index removed per tmrc behavior. | |
+| D17 | CLI delegation | reindex | Run `./devops.ps1 reindex` and `./devops.ps1 reindex --force`. | Script invokes tmrc `reindex` (and passes `--force` through); no "unknown argument" from tmrc. | |
+| D18 | Help | help command | Run `./devops.ps1 help`. | Same usage output as no-argument run; exits 0. | |
 
 ---
 

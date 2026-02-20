@@ -71,6 +71,7 @@ Commands:
   wipe        Remove all recordings and index via tmrc wipe
   reindex     Re-run OCR on existing segments (tmrc reindex; optional --force)
   clean       Run dotnet clean for the Windows solution
+  clean-pass  Clear all Pass states in specs/test.md
   help        Show this help message
 
 Examples:
@@ -374,6 +375,27 @@ function Cmd-Clean {
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
+function Cmd-CleanPass {
+    $specPath = Join-Path $ProjectRoot 'specs\test.md'
+    if (-not (Test-Path $specPath)) {
+        Write-Err "specs/test.md not found."
+        exit 1
+    }
+    $lines = Get-Content $specPath -Encoding UTF8
+    $changed = 0
+    $newLines = $lines | ForEach-Object {
+        $line = $_
+        if ($line -match '^\|\s*(D\d+[a-z]?|\d+[a-z]?)\s*\|' -and $line -match '\|\s*Pass\s*\|$') {
+            $changed++
+            $line -replace '\|\s*Pass\s*\|$', '| |'
+        } else {
+            $line
+        }
+    }
+    $newLines | Set-Content $specPath -Encoding UTF8
+    Write-Ok "Cleared $changed pass state(s) in specs/test.md."
+}
+
 if (-not $Command) {
     Show-Usage
     exit 0
@@ -391,6 +413,7 @@ switch ($Command) {
     'wipe' { Cmd-Wipe; break }
     'reindex' { Cmd-Reindex @Args; break }
     'clean' { Cmd-Clean; break }
+    'clean-pass' { Cmd-CleanPass; break }
     'help' { Show-Usage; break }
     default {
         Write-Err "Unknown command: $Command"
