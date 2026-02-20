@@ -295,12 +295,12 @@ function Invoke-TmrcCli {
         }
 
         Write-Warn "Detected stale .NET host lock on Tmrc.Core.dll. Terminating stale process(es) and retrying once..."
-        foreach ($pid in $stalePids) {
+        foreach ($stalePid in $stalePids) {
             try {
-                $null = taskkill /PID $pid /F
-                Write-Ok "Stopped stale .NET host PID $pid"
+                $null = taskkill /PID $stalePid /F
+                Write-Ok "Stopped stale .NET host PID $stalePid"
             } catch {
-                Write-Warn "Failed to stop PID ${pid}: $($_.Exception.Message)"
+                Write-Warn "Failed to stop PID ${stalePid}: $($_.Exception.Message)"
             }
         }
 
@@ -345,7 +345,7 @@ function Cmd-Lint {
 }
 
 function Cmd-Record {
-    Invoke-TmrcCli -CliArgs @('record')
+    Invoke-TmrcCli -CliArgs (@('record') + $Args)
 }
 
 function Cmd-Status {
