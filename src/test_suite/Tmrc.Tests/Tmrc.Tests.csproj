@@ -17,8 +17,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Tmrc.Core\Tmrc.Core.csproj" />
-    <ProjectReference Include="..\..\src\Tmrc.Cli\Tmrc.Cli.csproj" />
+    <ProjectReference Include="..\..\Tmrc.Core\Tmrc.Core.csproj" />
+    <ProjectReference Include="..\..\Tmrc.Cli\Tmrc.Cli.csproj" />
   </ItemGroup>
 
 </Project>

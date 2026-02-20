@@ -143,5 +143,25 @@ public class StorageTests
             }
         }
     }
+
+    [Fact(DisplayName = "TryProbeWritable returns true for writable directory")]
+    public void TryProbeWritable_WritableDir_ReturnsTrue()
+    {
+        var tmp = Path.Combine(Path.GetTempPath(), "tmrc-probe-" + Guid.NewGuid());
+        try
+        {
+            var mgr = new StorageManager(tmp);
+            var ok = mgr.TryProbeWritable(out var err);
+            Assert.True(ok);
+            Assert.Null(err);
+        }
+        finally
+        {
+            if (Directory.Exists(tmp))
+            {
+                Directory.Delete(tmp, recursive: true);
+            }
+        }
+    }
 }
 

@@ -64,5 +64,24 @@ public sealed class StorageManager
             File.WriteAllText(configPath, "# tmrc Windows config\n");
         }
     }
+
+    /// <summary>Returns true if we can write to the storage root (e.g. not read-only or full).</summary>
+    public bool TryProbeWritable(out string? errorMessage)
+    {
+        errorMessage = null;
+        try
+        {
+            Directory.CreateDirectory(StorageRoot);
+            var probePath = Path.Combine(StorageRoot, ".tmrc_probe_" + Guid.NewGuid().ToString("N")[..8]);
+            File.WriteAllText(probePath, "probe");
+            File.Delete(probePath);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+            return false;
+        }
+    }
 }
 

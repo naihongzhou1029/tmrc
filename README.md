@@ -73,7 +73,7 @@ Implemented so far:
   - `storage_root` default: `%USERPROFILE%\.tmrc`.
 - **Storage layout & retention**:
   - `storage_root` with:
-    - `index/<session>.sqlite` (schema TBD, not yet implemented),
+    - `index/<session>.sqlite` (segment index with id, time range, path, ocr_text, stt_text),
     - `segments/`,
     - `tmrc.pid`, `tmrc.log`.
   - `RetentionManager` with:
@@ -85,7 +85,8 @@ Implemented so far:
   - Relative helpers: `"now"`, `"1h ago"` (and other units), `"yesterday"`.
 - **CLI (Windows)**:
   - `tmrc install` – create storage layout and default config if missing.
-  - `tmrc status` – prints basic status (currently `Recording: no`, plus storage root).
+  - `tmrc uninstall [--remove-data]` – stop the daemon if running; with `--remove-data`, delete the storage root.
+  - `tmrc status` – prints basic status (Recording yes/no, storage root, disk usage).
   - `tmrc wipe` – clears `segments/` under the configured storage root.
   - `tmrc --version` – prints a Windows dev version (`0.1.0-windows-dev`).
 - **Support**:
@@ -103,12 +104,19 @@ Implemented (Windows, this phase):
 - **Real screen capture** via GDI BitBlt; event-based segmenter with frame-diff detection.
 - **MP4 segment writer** via FFmpeg (BMP sequence → libx264); segments stored as `.mp4` when FFmpeg is on PATH, else `.bin` placeholder.
 
+Implemented (Windows, export):
+
+- **Export to MP4/GIF:** `tmrc export --from <expr> --to <expr> -o <path> [--format mp4|gif|manifest]`. Default format is **mp4**. FFmpeg stitches segment MP4s into a single file; quality presets (low/medium/high) from config `export_quality`. Use `--format manifest` to write a text manifest of segment paths only.
+
+Implemented (Windows, indexing/ask):
+
+- **OCR:** When **Tesseract** and FFmpeg are on PATH, the recorder daemon runs OCR on the first frame of each closed MP4 segment and stores text in the index (`ocr_text`). `tmrc ask` then matches queries against this text (keyword search). Without Tesseract, segments are still recorded and export works; ask has no text to search.
+
 Not yet implemented (Windows):
 
 - Optional upgrade to Windows.Graphics.Capture; Media Foundation–based H.264 (or keep FFmpeg).
-- Export pipeline: stitch segment MP4s into a single MP4/GIF (quality presets, query-to-range).
-- OCR/STT integration to populate index; optional semantic/LLM for ask.
-- Toast notifications via Windows notification APIs.
+- Export by query (e.g. `tmrc export --query "..."`) to one merged range.
+- STT (speech-to-text) and re-index subcommand; optional semantic/LLM for ask.
 
 ---
 
@@ -120,7 +128,9 @@ Use a single PowerShell script, `devops.ps1`, as the entry point for local devel
 
 - Windows 10 1903+ (ideally Windows 11).
 - .NET SDK 8 (the script can install it via `winget` or `choco` if missing).
+- **FFmpeg** (on PATH): used for MP4 segment encoding during recording and for export stitching. Without it, segments are stored as `.bin` and video export is unavailable.
 - Optional:
+  - **Tesseract** (on PATH): enables OCR on each segment so `tmrc ask` can search recorded text.
   - `ffprobe` (for media export test validation).
   - `dotnet-format` (for lint/format workflow).
 
@@ -155,9 +165,9 @@ Use a single PowerShell script, `devops.ps1`, as the entry point for local devel
   - Runs `dotnet-format` on the solution when installed.
 - **`record` / `status` / `dump` / `wipe`**:
   - Call into the Windows CLI (`Tmrc.Cli`) via `dotnet run`.
-  - `record` is currently a placeholder until the Windows daemon is implemented.
-  - `status` prints basic info (`Recording: no`, storage root).
-  - `dump` exports a wide time range via `tmrc export` (not yet implemented; placeholder).
+  - `record` starts the recorder daemon (or reports already in progress).
+  - `status` prints basic info (Recording yes/no, storage root, disk usage).
+  - `dump` exports a wide time range to a single MP4 via `tmrc export --from "1000d ago" --to now -o <path>` (requires FFmpeg and MP4 segments).
   - `wipe` clears all recordings under `segments/` in the current storage root.
 - **`clean`**:
   - Runs `dotnet clean` on `src/Tmrc.sln`.
@@ -167,11 +177,10 @@ Use a single PowerShell script, `devops.ps1`, as the entry point for local devel
 ## Known issues / limitations (Windows)
 
 - **Recording** uses GDI capture and FFmpeg for MP4; optional Windows.Graphics.Capture and Media Foundation are not yet integrated.
-- **Ask/export not yet wired**
-  - `tmrc ask` and `tmrc export` are not implemented on Windows; there is no index schema or export pipeline yet.
-- **OCR/STT not yet available**
-  - No OCR/STT integration; indexing and semantic search are future work on Windows.
-- **Toast notifications are stubbed**
-  - Notifications are logged to stderr; native Windows toast integration is still pending.
+- **Ask** is implemented (keyword search over index). **Export** is implemented (time-range to MP4/GIF or manifest; FFmpeg required for video).
+- **OCR optional (Tesseract)**
+  - OCR runs when Tesseract and FFmpeg are on PATH; otherwise segments have no OCR text. STT and semantic/LLM ask are not yet implemented.
+- **Toast notifications**
+  - Implemented via PowerShell + WinRT when storage is not writable or on disk-full/write error; falls back to stderr if the toast call fails.
 
 For a more detailed, itemized view of implementation vs plan, see `specs/building_progress.md` and `specs/spec.md` / `specs/test.md`.

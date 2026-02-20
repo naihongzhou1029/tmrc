@@ -12,7 +12,10 @@ using Tmrc.Core.Storage;
 using Tmrc.Core.Support;
 using Tmrc.Core.Recording;
 using Tmrc.Cli.Capture;
+using Tmrc.Cli.Export;
+using Tmrc.Cli.Indexing;
 using Tmrc.Cli.Recording;
+using Tmrc.Cli.Support;
 
 namespace Tmrc.Cli;
 
@@ -261,6 +264,7 @@ public static class Program
         string? fromExpr = null;
         string? toExpr = null;
         string? outputPath = null;
+        string format = "mp4";
 
         for (var i = 0; i < args.Length; i++)
         {
@@ -277,11 +281,21 @@ public static class Program
             {
                 outputPath = args[++i];
             }
+            else if ((a == "--format" || a == "-f") && i + 1 < args.Length)
+            {
+                format = args[++i].ToLowerInvariant();
+            }
         }
 
         if (string.IsNullOrWhiteSpace(outputPath))
         {
-            Console.Error.WriteLine("Usage: tmrc export --from <expr> --to <expr> -o <outputPath>");
+            Console.Error.WriteLine("Usage: tmrc export --from <expr> --to <expr> -o <outputPath> [--format mp4|gif|manifest]");
+            return 1;
+        }
+
+        if (format != "mp4" && format != "gif" && format != "manifest")
+        {
+            Console.Error.WriteLine("--format must be mp4, gif, or manifest.");
             return 1;
         }
 
@@ -321,7 +335,6 @@ public static class Program
             return 1;
         }
 
-        // Resolve index rows to on-disk segment files using the stored path.
         var ordered = new List<IndexStore.SegmentRow>();
         foreach (var row in rows)
         {
@@ -336,6 +349,46 @@ public static class Program
 
         ordered.Sort((a, b) => a.Start.CompareTo(b.Start));
 
+        if (format == "mp4" || format == "gif")
+        {
+            foreach (var row in ordered)
+            {
+                if (!string.Equals(Path.GetExtension(row.Path), ".mp4", StringComparison.OrdinalIgnoreCase))
+                {
+                    Console.Error.WriteLine($"Segment {row.Id} is not MP4 ({row.Path}). Only MP4 segments can be stitched. Record with FFmpeg on PATH to get MP4 segments.");
+                    return 1;
+                }
+            }
+
+            var paths = ordered.ConvertAll(r => r.Path!);
+
+            if (!VideoExport.IsAvailable())
+            {
+                Console.Error.WriteLine("FFmpeg is required for video export. Install FFmpeg and ensure it is on PATH.");
+                return 1;
+            }
+
+            var outDir = Path.GetDirectoryName(outputPath);
+            if (!string.IsNullOrEmpty(outDir))
+            {
+                Directory.CreateDirectory(outDir);
+            }
+
+            var ok = format == "gif"
+                ? VideoExport.StitchToGif(paths, outputPath, cfg.ExportQuality)
+                : VideoExport.StitchToMp4(paths, outputPath, cfg.ExportQuality);
+
+            if (!ok)
+            {
+                Console.Error.WriteLine("Export failed (FFmpeg error). Check that segment files are valid MP4.");
+                return 1;
+            }
+
+            Console.WriteLine($"Exported {ordered.Count} segment(s) to {outputPath} ({format}).");
+            return 0;
+        }
+
+        // manifest
         try
         {
             var outDir = Path.GetDirectoryName(outputPath);
@@ -345,7 +398,7 @@ public static class Program
             }
 
             using var writer = new StreamWriter(outputPath, append: false);
-            writer.WriteLine("# tmrc export manifest (simulated)");
+            writer.WriteLine("# tmrc export manifest");
             writer.WriteLine($"# from: {range.From:O}");
             writer.WriteLine($"# to:   {range.To:O}");
             writer.WriteLine();
@@ -361,7 +414,7 @@ public static class Program
             return 1;
         }
 
-        Console.WriteLine($"Exported {ordered.Count} segment reference(s) to {outputPath}.");
+        Console.WriteLine($"Exported {ordered.Count} segment reference(s) to {outputPath} (manifest).");
         return 0;
     }
 
@@ -487,12 +540,59 @@ public static class Program
 
     private static int Uninstall(string[] args)
     {
-        var cfg = LoadConfig();
-        if (Directory.Exists(cfg.StorageRoot))
+        var removeData = false;
+        for (var i = 0; i < args.Length; i++)
         {
-            // Default: keep data; for now just print info.
-            Console.WriteLine($"tmrc data present at {cfg.StorageRoot}. Remove manually if desired.");
+            if (args[i] == "--remove-data")
+            {
+                removeData = true;
+                break;
+            }
         }
+
+        var cfg = LoadConfig();
+        var storage = new StorageManager(cfg.StorageRoot);
+
+        if (TryGetRunningDaemon(storage, out var pid, out var proc))
+        {
+            Console.WriteLine("Stopping recorder daemon...");
+            try
+            {
+                TrySendDaemonShutdown();
+                proc?.WaitForExit(5000);
+                if (proc is { HasExited: false })
+                {
+                    proc.Kill(true);
+                    proc.WaitForExit(5000);
+                }
+            }
+            catch { /* best-effort */ }
+            try
+            {
+                if (File.Exists(storage.PidFilePath))
+                    File.Delete(storage.PidFilePath);
+            }
+            catch { }
+        }
+
+        if (removeData && Directory.Exists(cfg.StorageRoot))
+        {
+            try
+            {
+                Directory.Delete(cfg.StorageRoot, recursive: true);
+                Console.WriteLine($"Removed tmrc data at {cfg.StorageRoot}");
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Failed to remove {cfg.StorageRoot}: {ex.Message}");
+                return 1;
+            }
+        }
+        else if (Directory.Exists(cfg.StorageRoot))
+        {
+            Console.WriteLine($"tmrc data present at {cfg.StorageRoot}. Use --remove-data to delete it.");
+        }
+
         return 0;
     }
 
@@ -537,8 +637,16 @@ public static class Program
     {
         var cfg = LoadConfig();
         var storage = new StorageManager(cfg.StorageRoot);
+        var notifier = new WindowsToastNotifier();
 
         Directory.CreateDirectory(Path.GetDirectoryName(storage.PidFilePath)!);
+
+        if (!storage.TryProbeWritable(out var writableError))
+        {
+            notifier.Toast("tmrc", "Storage not writable: " + (writableError ?? "unknown"));
+            Console.Error.WriteLine($"Storage not writable: {writableError}");
+            return 1;
+        }
 
         var pid = Environment.ProcessId;
         File.WriteAllText(storage.PidFilePath, pid.ToString());
@@ -577,6 +685,16 @@ public static class Program
         else
         {
             logger.Info("FFmpeg not found; writing .bin segments.");
+        }
+
+        var useOcr = SegmentOcr.IsAvailable();
+        if (useOcr)
+        {
+            logger.Info("OCR enabled (Tesseract on PATH).");
+        }
+        else
+        {
+            logger.Info("Tesseract not found; segments will have no OCR text.");
         }
 
         var segmentFrames = new List<byte[]>();
@@ -697,7 +815,23 @@ public static class Program
                         if (Mp4SegmentWriter.Write(segmentFrames, frameWidth, frameHeight, path, fps))
                         {
                             indexStore.UpsertSegment(id, start, end, path, ocrText: null, sttText: null);
-                            logger.Info($"Segment recorded: {id} {start:O} - {end:O} (MP4)");
+                            if (useOcr)
+                            {
+                                var ocrText = SegmentOcr.Recognize(path);
+                                if (!string.IsNullOrWhiteSpace(ocrText))
+                                {
+                                    indexStore.UpsertSegment(id, start, end, path, ocrText, sttText: null);
+                                    logger.Info($"Segment recorded: {id} {start:O} - {end:O} (MP4, OCR)");
+                                }
+                                else
+                                {
+                                    logger.Info($"Segment recorded: {id} {start:O} - {end:O} (MP4)");
+                                }
+                            }
+                            else
+                            {
+                                logger.Info($"Segment recorded: {id} {start:O} - {end:O} (MP4)");
+                            }
                         }
                         else
                         {
@@ -717,6 +851,11 @@ public static class Program
                 catch (Exception ex)
                 {
                     logger.Error($"Failed to write segment {id}: {ex.Message}");
+                    if (ex is IOException || ex.InnerException is IOException)
+                    {
+                        notifier.Toast("tmrc", "Disk full or write error; stopping recording.");
+                        shutdownCts.Cancel();
+                    }
                 }
                 finally
                 {
