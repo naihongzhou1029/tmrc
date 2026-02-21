@@ -58,6 +58,7 @@ public struct Installer {
         ocr_granularity: per_segment_summary
         ask_default_range: 24h
         export_quality: high
+        clear_log_on_start: true
 
         """
         try content.write(toFile: path, atomically: true, encoding: .utf8)

@@ -50,3 +50,6 @@ ask_default_range: 24h
 # Export quality (MP4/GIF). Default: high. Advanced users: three levels — low, medium, high.
 # low: 720p, ~2 Mbps; medium: 1080p, ~5 Mbps; high: source resolution (or 1080p+), ~8 Mbps. GIF uses same level for resolution/frame rate.
 export_quality: high
+
+# Clear tmrc.log when starting recording from CLI (each daemon start). Does not clear on in-process restarts (e.g. stream error recovery). Default: true.
+clear_log_on_start: true

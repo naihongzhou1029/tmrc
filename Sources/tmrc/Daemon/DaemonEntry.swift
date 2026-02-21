@@ -46,6 +46,15 @@ public struct DaemonEntry {
             config = TMRCConfig.default()
         }
 
+        if config.clearLogOnStart {
+            let logURL = URL(fileURLWithPath: storage.logFilePath)
+            if FileManager.default.fileExists(atPath: logURL.path),
+               let handle = try? FileHandle(forWritingTo: logURL) {
+                try? handle.truncate(atOffset: 0)
+                try? handle.close()
+            }
+        }
+
         // Crash recovery: remove incomplete segment files (0 or very small) from previous run.
         try removeIncompleteSegments(storage: storage)
 

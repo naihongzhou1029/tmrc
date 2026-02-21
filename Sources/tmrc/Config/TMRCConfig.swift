@@ -58,6 +58,8 @@ public struct TMRCConfig: Codable {
     public var askDefaultRange: String
     /// Export quality: low, medium, high.
     public var exportQuality: ExportQuality
+    /// When true, clear tmrc.log when starting recording from CLI (daemon start). Does not clear on in-process restarts. Default true.
+    public var clearLogOnStart: Bool
 
     enum CodingKeys: String, CodingKey {
         case sampleRateMs = "sample_rate_ms"
@@ -72,6 +74,7 @@ public struct TMRCConfig: Codable {
         case ocrGranularity = "ocr_granularity"
         case askDefaultRange = "ask_default_range"
         case exportQuality = "export_quality"
+        case clearLogOnStart = "clear_log_on_start"
     }
 
     public static let defaultSampleRateMs = 100.0
@@ -95,7 +98,8 @@ public struct TMRCConfig: Codable {
             ocrRecognitionLanguages: defaultOcrLanguages,
             ocrGranularity: .per_segment_summary,
             askDefaultRange: defaultAskDefaultRange,
-            exportQuality: .high
+            exportQuality: .high,
+            clearLogOnStart: true
         )
     }
 

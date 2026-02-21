@@ -15,6 +15,7 @@ private struct TMRCConfigPartial: Codable {
     var ocr_granularity: String?
     var ask_default_range: String?
     var export_quality: String?
+    var clear_log_on_start: Bool?
 }
 
 public struct ConfigLoader {
@@ -93,6 +94,7 @@ public struct ConfigLoader {
         if let s = p.ocr_granularity, let v = OCRGranularity(rawValue: s) { out.ocrGranularity = v }
         if let v = p.ask_default_range, !v.isEmpty { out.askDefaultRange = v }
         if let s = p.export_quality, let v = ExportQuality(rawValue: s) { out.exportQuality = v }
+        if let v = p.clear_log_on_start { out.clearLogOnStart = v }
         return out
     }
 }

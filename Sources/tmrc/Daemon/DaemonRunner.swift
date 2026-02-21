@@ -26,6 +26,7 @@ struct DaemonRunner {
         let lowSpaceThreshold: Int64 = 100 * 1024 * 1024 // 100 MB
         let maxRestartAttempts = 3
         var restartAttempts = 0
+        let noDisplayRetryInterval: TimeInterval = 30
 
         outer: while !DaemonEntry.signalReceived {
             var streamError: Error?
@@ -42,6 +43,11 @@ struct DaemonRunner {
             }
             started.wait()
             if let err = startError {
+                if Self.isRecoverableNoDisplayError(err) {
+                    Logger.shared.log("Capture start failed (no display, e.g. lid closed): \(err.localizedDescription). Retrying in \(Int(noDisplayRetryInterval))s.", level: .warn, category: "daemon")
+                    sleepWithSignalCheck(interval: noDisplayRetryInterval)
+                    continue outer
+                }
                 Logger.shared.log("Capture start failed: \(err.localizedDescription)", level: .error, category: "daemon")
                 Notifier.notify(title: "tmrc", body: "Screen capture failed to start. Recording has been stopped.")
                 break
@@ -154,5 +160,24 @@ struct DaemonRunner {
         } catch {
             Logger.shared.log("Segment write/index failed: \(error.localizedDescription)", level: .error, category: "daemon")
         }
+    }
+
+    /// Treats "no display" (e.g. lid closed) and "no displays or windows to capture" as recoverable so we retry.
+    private static func isRecoverableNoDisplayError(_ error: Error) -> Bool {
+        if error is CaptureError {
+            return (error as? CaptureError) == .noDisplay
+        }
+        let msg = error.localizedDescription.lowercased()
+        return msg.contains("display") || msg.contains("displays or windows") || msg.contains("windows to capture")
+    }
+}
+
+/// Sleep in 1s chunks so we can respect DaemonEntry.signalReceived and exit promptly.
+private func sleepWithSignalCheck(interval: TimeInterval) {
+    let chunk: TimeInterval = 1
+    var remaining = interval
+    while remaining > 0 && !DaemonEntry.signalReceived {
+        Thread.sleep(forTimeInterval: min(chunk, remaining))
+        remaining -= chunk
     }
 }

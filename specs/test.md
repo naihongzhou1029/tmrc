@@ -92,6 +92,12 @@ Table of test cases for review and execution. Fill **Actual Result** and **Pass*
 | 87 | Observability | Debug mode | Run `tmrc --debug status` or `TMRC_DEBUG=1 tmrc status`. Read log or stderr. | Assert log level is verbose (more lines or DEBUG); process exits 0; no crash. |
 | 88 | Soak | Daemon long run | Run daemon with mock or minimal real capture for 30–60 min. Periodically sample segment count and index row count. | At end: process still running; segment file count equals index row count (or consistent per spec); no duplicate segment IDs in index; memory growth within acceptable bound. |
 | 89 | Soak | Concurrent exports stress | Run 10+ `tmrc export` in parallel; wait for all. | All exit 0; all output files exist and are valid (duration/codec); index and segment files unchanged; no corruption. |
+| 90 | Recording | Automatic recovery (stream error) | Start daemon; simulate or trigger a ScreenCaptureKit stream error (e.g. SCStream didStopWithError). Inspect daemon log and process. | Daemon logs "Capture stream stopped with error: ... Restart attempt 1/3" (or 2/3, 3/3); creates a new capture and continues recording. After 3 consecutive stream errors, daemon exits, shows toast, and log states repeated errors. |
+| 91 | Recording | Automatic recovery (no display) | Start daemon; cause capture start to fail with "no display" (e.g. lid closed, or mock SCShareableContent returning empty). Wait for retry. | Daemon logs "Capture start failed (no display, e.g. lid closed) ... Retrying in 30s." and does not exit; after 30s (or when display is available again), capture starts and recording continues. No limit on no-display retries (only stream-error path has 3-attempt cap). |
+| 92 | Recording | Clear log not on in-process restart | Start daemon; trigger one stream-error restart (so capture restarts inside the same process). Read tmrc.log. | Log contains both lines from before the restart and after (e.g. "Restart attempt 1/3" and subsequent "Segment written"). Log file was not truncated by the in-process restart. |
+| 93 | CLI & Daemon | Clear log on start default | Load config with no `clear_log_on_start` key (or empty YAML). | Assert the loaded `clear_log_on_start` (or equivalent) is true. |
+| 94 | CLI & Daemon | Clear log on start when enabled | With `clear_log_on_start: true` (or default), write a known line to tmrc.log (e.g. from a previous run or helper). Start daemon with `tmrc record --start`. Read tmrc.log after daemon has logged "Daemon starting". | Log file is truncated at daemon start; first line of the file is from this run (e.g. "Daemon starting (session=...") and the previously written line is gone. |
+| 95 | CLI & Daemon | Clear log on start when disabled | Set `clear_log_on_start: false` in config. Write a known line to tmrc.log. Start daemon. Read tmrc.log. | Log file is not truncated; the known line still appears (e.g. at the top or before "Daemon starting"); new daemon lines are appended. |
 
 ---
 
@@ -102,4 +108,5 @@ Table of test cases for review and execution. Fill **Actual Result** and **Pass*
 - **Actual Result:** Fill when the test is executed (e.g. "Passed", "Failed: ...", or brief description).
 - **Pass:** Use e.g. ✓ / ✗ or Yes / No after execution.
 - Items 14–15, 26, 45–46, 55–56, 84 may require real capture, permissions, or long run; mark as E2E/soak as needed.
+- Items 90–91 (automatic recovery) may require real capture or a harness that injects stream/start errors; 92–95 (clear log) can be done with file inspection and config loader.
 - Add or remove rows as you refine; renumber if desired.
