@@ -32,11 +32,17 @@ public static class SegmentOcr
             return false;
         }
 
+        var tesseractExe = ResolveTesseractExecutable();
+        if (tesseractExe is null)
+        {
+            return false;
+        }
+
         try
         {
             using var process = Process.Start(new ProcessStartInfo
             {
-                FileName = TesseractExe,
+                FileName = tesseractExe,
                 ArgumentList = { "--version" },
                 UseShellExecute = false,
                 CreateNoWindow = true,
@@ -160,11 +166,17 @@ public static class SegmentOcr
 
     private static string? RunTesseract(string pngPath, string? langArg = null)
     {
+        var tesseractExe = ResolveTesseractExecutable();
+        if (tesseractExe is null)
+        {
+            return null;
+        }
+
         var outBase = Path.Combine(Path.GetTempPath(), "tmrc_tess_" + Guid.NewGuid().ToString("N")[..8]);
         var outTxt = outBase + ".txt";
         var psi = new ProcessStartInfo
         {
-            FileName = TesseractExe,
+            FileName = tesseractExe,
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardError = true
@@ -200,5 +212,40 @@ public static class SegmentOcr
                 try { File.Delete(outTxt); } catch { /* best-effort */ }
             }
         }
+    }
+
+    private static string? ResolveTesseractExecutable()
+    {
+        var envOverride = Environment.GetEnvironmentVariable("TESSERACT_EXE");
+        if (!string.IsNullOrWhiteSpace(envOverride))
+        {
+            var full = envOverride.Trim().Trim('"');
+            if (File.Exists(full))
+            {
+                return full;
+            }
+        }
+
+        var pf = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        if (!string.IsNullOrWhiteSpace(pf))
+        {
+            var candidate = Path.Combine(pf, "Tesseract-OCR", "tesseract.exe");
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        var pf86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+        if (!string.IsNullOrWhiteSpace(pf86))
+        {
+            var candidate = Path.Combine(pf86, "Tesseract-OCR", "tesseract.exe");
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return TesseractExe;
     }
 }

@@ -133,23 +133,16 @@ public static class Program
 
     private static int Record(string[] args)
     {
-        // record (no args) -> toggle
-        // record --start   -> start only
-        // record --stop    -> stop only
-        var sub = args.Length > 0 ? args[0] : null;
-        if (string.Equals(sub, "--start", StringComparison.OrdinalIgnoreCase))
-            return StartRecording();
-        if (string.Equals(sub, "--stop", StringComparison.OrdinalIgnoreCase))
-            return StopRecording();
-        return ToggleRecording();
-    }
-
-    private static int ToggleRecording()
-    {
-        var storage = CreateStorageManager();
-        if (TryGetRunningDaemon(storage, out _, out _))
-            return StopRecording();
-        return StartRecording();
+        // record           -> start
+        // record --start   -> start
+        // record --stop    -> stop
+        var sub = args.Length > 0 ? args[0] : "--start";
+        return sub switch
+        {
+            "--start" => StartRecording(),
+            "--stop" => StopRecording(),
+            _ => StartRecording()
+        };
     }
 
     private static int StartRecording()
@@ -169,14 +162,17 @@ public static class Program
         ProcessStartInfo psi;
         if (string.Equals(Path.GetExtension(assemblyPath), ".dll", StringComparison.OrdinalIgnoreCase))
         {
-            // Framework-dependent deployment: always use dotnet host for DLL execution.
-            // Environment.ProcessPath may point to an apphost executable under dotnet run.
+            // Framework-dependent deployment: use dotnet host to run the DLL.
+            // Environment.ProcessPath may point to testhost/vstest in tests and break daemon launch.
             var host = "dotnet";
             psi = new ProcessStartInfo
             {
                 FileName = host,
                 Arguments = $"\"{assemblyPath}\" __daemon",
                 UseShellExecute = false,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
                 CreateNoWindow = true,
                 WorkingDirectory = Directory.GetCurrentDirectory()
             };
@@ -189,6 +185,9 @@ public static class Program
                 FileName = assemblyPath,
                 Arguments = "__daemon",
                 UseShellExecute = false,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
                 CreateNoWindow = true,
                 WorkingDirectory = Directory.GetCurrentDirectory()
             };
@@ -201,49 +200,11 @@ public static class Program
             return 1;
         }
 
-        var started = WaitForDaemonStartup(storage, out var pid, TimeSpan.FromSeconds(5));
-        if (!started)
-        {
-            // If child exited immediately, surface that signal in diagnostics.
-            string detail = string.Empty;
-            try
-            {
-                if (proc.HasExited || proc.WaitForExit(200))
-                {
-                    detail = $" Child process exited with code {proc.ExitCode}.";
-                }
-            }
-            catch
-            {
-                // best-effort diagnostics
-            }
+        // Give daemon a brief moment to write PID file.
+        Task.Delay(250).Wait();
 
-            Console.Error.WriteLine("Recorder daemon failed to start." + detail);
-            return 1;
-        }
-
-        Console.WriteLine($"Recording started (PID {pid}).");
+        Console.WriteLine("Recording started.");
         return 0;
-    }
-
-    private static bool WaitForDaemonStartup(
-        StorageManager storage,
-        out int pid,
-        TimeSpan timeout)
-    {
-        var sw = Stopwatch.StartNew();
-        while (sw.Elapsed < timeout)
-        {
-            if (TryGetRunningDaemon(storage, out pid, out _))
-            {
-                return true;
-            }
-
-            Thread.Sleep(50);
-        }
-
-        pid = 0;
-        return false;
     }
 
     private static int StopRecording()
@@ -310,20 +271,12 @@ public static class Program
         try
         {
             var usage = storage.DiskUsageAsync().GetAwaiter().GetResult();
-            var usageGb = usage / 1_073_741_824.0;
-            Console.WriteLine($"Disk usage: {usageGb:F1} GB");
+            Console.WriteLine($"Disk usage (bytes): {usage}");
         }
         catch
         {
             // ignore disk usage errors; status still useful
         }
-
-        var maxAgeDaysDisplay = cfg.RetentionMaxAgeDays == 0 ? "disabled" : $"{cfg.RetentionMaxAgeDays} days";
-        var maxDiskDisplay = cfg.RetentionMaxDiskBytes == 0
-            ? "disabled"
-            : $"{cfg.RetentionMaxDiskBytes / 1_073_741_824.0:F1} GB";
-        Console.WriteLine($"Retention max age: {maxAgeDaysDisplay}");
-        Console.WriteLine($"Retention max disk: {maxDiskDisplay}");
 
         return 0;
     }
@@ -468,25 +421,8 @@ public static class Program
         var rows = store.QueryByTimeRange(range.From, range.To);
         if (rows.Count == 0)
         {
-            var all = store.ListAllSegments();
-            if (all.Count > 0)
-            {
-                var inRange = new List<IndexStore.SegmentRow>();
-                foreach (var row in all)
-                {
-                    if (row.Start <= range.To && row.End >= range.From)
-                        inRange.Add(row);
-                }
-                rows = inRange;
-            }
-            if (rows.Count == 0)
-            {
-                if (all.Count > 0)
-                    Console.Error.WriteLine("No segments found in the requested time range. The index has {0} segment(s) outside this range; try a wider --from/--to.", all.Count);
-                else
-                    Console.Error.WriteLine("No segments found; index is empty. Run 'tmrc record' to capture, then 'tmrc status' to verify.");
-                return 1;
-            }
+            Console.Error.WriteLine("No segments found in the requested time range.");
+            return 1;
         }
 
         var ordered = new List<IndexStore.SegmentRow>();

@@ -145,6 +145,7 @@ Use a single PowerShell script, `devops.ps1`, as the entry point for local devel
 ./devops.ps1 build
 ./devops.ps1 test
 ./devops.ps1 lint
+./devops.ps1 clear-tests
 ./devops.ps1 record
 ./devops.ps1 status
 ./devops.ps1 dump
@@ -166,6 +167,9 @@ Use a single PowerShell script, `devops.ps1`, as the entry point for local devel
   - Runs setup checks silently first.
 - **`lint`**:
   - Runs `dotnet-format` on the solution when installed.
+- **`clear-tests`**:
+  - Clears all values in the **Pass** column of `specs/test.md`.
+  - Keeps all other test table content unchanged (`Actual Result`, action steps, expected results, etc.).
 - **`record` / `status` / `dump` / `wipe`**:
   - Call into the Windows CLI (`Tmrc.Cli`) via `dotnet run`.
   - `record` starts the recorder daemon (or reports already in progress).

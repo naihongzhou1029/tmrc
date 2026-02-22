@@ -15,6 +15,7 @@ if (-not (Get-Variable -Name IsWindows -Scope Global -ErrorAction SilentlyContin
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $ProjectRoot = $ScriptDir
+$Script:SessionRefreshHints = @()
 
 function Write-Ok {
     param([string]$Message)
@@ -38,11 +39,49 @@ function Has-Command {
     return [bool](Get-Command $Name -ErrorAction SilentlyContinue)
 }
 
-function Get-DotNetVersion {
-    # Run via cmd so stderr from dotnet host does not surface as PowerShell NativeCommandError.
-    $ver = cmd /c 'dotnet --version 2>nul'
-    if ($ver) { return $ver.Trim() }
-    return $null
+function Confirm-Install {
+    param(
+        [string]$ToolName,
+        [string]$Reason
+    )
+
+    if ($env:DEVOPS_QUIET) {
+        return $false
+    }
+
+    Write-Host ""
+    Write-Host "Tool missing: $ToolName" -ForegroundColor Yellow
+    if ($Reason) {
+        Write-Host "Reason: $Reason"
+    }
+    $answer = Read-Host "Install now? [Y/n]"
+    if ([string]::IsNullOrWhiteSpace($answer)) {
+        return $true
+    }
+
+    return $answer.Trim().ToLowerInvariant() -in @('y', 'yes')
+}
+
+function Install-ToolWithPackageManager {
+    param(
+        [string]$ToolName,
+        [string[]]$WingetCmd,
+        [string[]]$ChocoCmd
+    )
+
+    if (Has-Command 'winget') {
+        Show-Cmd -Cmd $WingetCmd
+        & $WingetCmd[0] $WingetCmd[1..($WingetCmd.Length - 1)]
+        return
+    }
+
+    if (Has-Command 'choco') {
+        Show-Cmd -Cmd $ChocoCmd
+        & $ChocoCmd[0] $ChocoCmd[1..($ChocoCmd.Length - 1)]
+        return
+    }
+
+    throw "No supported package manager (winget/choco) found for $ToolName."
 }
 
 function Show-Cmd {
@@ -65,18 +104,19 @@ Commands:
   build       Run dotnet build for the Windows solution
   test        Run dotnet test for the Windows solution
   lint        Run dotnet format (if installed)
+  clear-tests Clear all values in Pass column of specs/test.md
   record      Run tmrc record (Windows CLI)
   status      Run tmrc status (Windows CLI)
   dump        Export all recordings to a single MP4 via tmrc export
   wipe        Remove all recordings and index via tmrc wipe
   reindex     Re-run OCR on existing segments (tmrc reindex; optional --force)
   clean       Run dotnet clean for the Windows solution
-  clean-pass  Clear all Pass states in specs/test.md
   help        Show this help message
 
 Examples:
   ./devops.ps1 setup
   ./devops.ps1 build
+  ./devops.ps1 clear-tests
   ./devops.ps1 record
   ./devops.ps1 dump
   ./devops.ps1 wipe
@@ -118,14 +158,47 @@ function Ensure-DotNetInPath {
     }
 }
 
-function Install-DotNetSdk {
-    Ensure-DotNetInPath
-    if ((Has-Command 'dotnet') -and (Get-DotNetVersion)) {
+function Ensure-TesseractInPath {
+    if (Has-Command 'tesseract') {
         return
     }
 
-    $reason = if (Has-Command 'dotnet') { "dotnet failed to run" } else { ".NET SDK (dotnet) not found in PATH" }
-    Write-Warn "$reason. Attempting installation..."
+    $candidateDirs = @()
+    if ($env:TESSERACT_EXE) {
+        $candidate = Split-Path -Parent $env:TESSERACT_EXE
+        if ($candidate) {
+            $candidateDirs += $candidate
+        }
+    }
+    if ($Env:ProgramFiles) {
+        $candidateDirs += (Join-Path $Env:ProgramFiles 'Tesseract-OCR')
+    }
+    if (${Env:ProgramFiles(x86)}) {
+        $candidateDirs += (Join-Path ${Env:ProgramFiles(x86)} 'Tesseract-OCR')
+    }
+
+    foreach ($dir in ($candidateDirs | Select-Object -Unique)) {
+        if (-not $dir) { continue }
+        if (-not (Test-Path (Join-Path $dir 'tesseract.exe'))) { continue }
+        if (-not ($Env:PATH -split ';' | Where-Object { $_ -ieq $dir })) {
+            $Env:PATH = "$dir;$Env:PATH"
+        }
+    }
+}
+
+function Install-DotNetSdk {
+    # Try to ensure it's already reachable first.
+    Ensure-DotNetInPath
+    if (Has-Command 'dotnet') {
+        return
+    }
+
+    if (-not (Confirm-Install -ToolName '.NET SDK 8' -Reason 'Required to build and run tmrc.')) {
+        Write-Err ".NET SDK installation declined."
+        return
+    }
+
+    Write-Warn ".NET SDK (dotnet) not found in PATH. Attempting installation..."
 
     if (Has-Command 'winget') {
         $cmd = @('winget', 'install', '--id', 'Microsoft.DotNet.SDK.8', '-e', '--source', 'winget')
@@ -149,13 +222,101 @@ function Install-DotNetSdk {
         return
     }
 
+    # After install, try to pick it up in this session.
     Ensure-DotNetInPath
-    $ver = Get-DotNetVersion
-    if ($ver) {
-        Write-Ok ".NET SDK detected after installation: $ver"
+    if (Has-Command 'dotnet') {
+        Write-Ok ".NET SDK detected after installation."
     } else {
-        Write-Warn "dotnet still not found or not working in this session."
-        Write-Warn "Open a new terminal and run setup again, or add the dotnet install directory to PATH."
+        Write-Warn "dotnet still not found in PATH in this session."
+        Write-Warn "You may need to open a new terminal, or ensure the dotnet install directory is added to PATH."
+    }
+}
+
+function Ensure-OptionalFfmpeg {
+    if (Has-Command 'ffprobe' -and Has-Command 'ffmpeg') {
+        Write-Ok "ffmpeg/ffprobe found (used by recording/export validation)"
+        return
+    }
+
+    Write-Warn "ffmpeg and/or ffprobe not found (optional, recommended)."
+    if (-not (Confirm-Install -ToolName 'FFmpeg' -Reason 'Needed for MP4 recording/export and ffprobe-based media checks.')) {
+        Write-Warn "Skipped FFmpeg installation by user choice."
+        return
+    }
+
+    try {
+        Install-ToolWithPackageManager `
+            -ToolName 'FFmpeg' `
+            -WingetCmd @('winget', 'install', '--id', 'Gyan.FFmpeg', '-e', '--source', 'winget') `
+            -ChocoCmd @('choco', 'install', 'ffmpeg', '-y')
+    } catch {
+        Write-Warn "FFmpeg install failed: $($_.Exception.Message)"
+    }
+
+    if (Has-Command 'ffprobe' -and Has-Command 'ffmpeg') {
+        Write-Ok "ffmpeg/ffprobe installed and available."
+    } else {
+        Write-Warn "ffmpeg/ffprobe still not found in current session."
+        $Script:SessionRefreshHints += 'ffmpeg/ffprobe'
+    }
+}
+
+function Ensure-OptionalDotnetFormat {
+    if (Has-Command 'dotnet-format') {
+        Write-Ok "dotnet-format (code formatter) found"
+        return
+    }
+
+    Write-Warn "dotnet-format not found (optional)."
+    if (-not (Confirm-Install -ToolName 'dotnet-format' -Reason 'Used by devops lint command.')) {
+        Write-Warn "Skipped dotnet-format installation by user choice."
+        return
+    }
+
+    $cmd = @('dotnet', 'tool', 'install', '-g', 'dotnet-format')
+    Show-Cmd -Cmd $cmd
+    try {
+        & $cmd[0] $cmd[1..($cmd.Length - 1)]
+    } catch {
+        Write-Warn "dotnet-format install failed: $($_.Exception.Message)"
+    }
+
+    if (Has-Command 'dotnet-format') {
+        Write-Ok "dotnet-format installed."
+    } else {
+        Write-Warn "dotnet-format not found in current session after install."
+        $Script:SessionRefreshHints += 'dotnet-format'
+    }
+}
+
+function Ensure-OptionalTesseract {
+    Ensure-TesseractInPath
+    if (Has-Command 'tesseract') {
+        Write-Ok "Tesseract found (OCR/reindex support)"
+        return
+    }
+
+    Write-Warn "Tesseract not found (optional, needed for OCR/reindex)."
+    if (-not (Confirm-Install -ToolName 'Tesseract OCR' -Reason 'Required for tmrc reindex and OCR text indexing.')) {
+        Write-Warn "Skipped Tesseract installation by user choice."
+        return
+    }
+
+    try {
+        Install-ToolWithPackageManager `
+            -ToolName 'Tesseract' `
+            -WingetCmd @('winget', 'install', '--id', 'UB-Mannheim.TesseractOCR', '-e', '--source', 'winget') `
+            -ChocoCmd @('choco', 'install', 'tesseract', '-y')
+    } catch {
+        Write-Warn "Tesseract install failed: $($_.Exception.Message)"
+    }
+
+    Ensure-TesseractInPath
+    if (Has-Command 'tesseract') {
+        Write-Ok "Tesseract installed and available."
+    } else {
+        Write-Warn "Tesseract still not found in current session."
+        $Script:SessionRefreshHints += 'tesseract'
     }
 }
 
@@ -167,32 +328,24 @@ function Check-Env {
     if ($Quiet) {
         $env:DEVOPS_QUIET = '1'
     }
+    $Script:SessionRefreshHints = @()
 
     Assert-Windows
-    Assert-DotNetSolution
 
     $failures = 0
 
     Write-Ok "Operating system: Windows"
 
-    $ver = $null
     if (Has-Command 'dotnet') {
-        $ver = Get-DotNetVersion
-    }
-    if ($ver) {
+        $ver = (dotnet --version 2>$null)
         Write-Ok ".NET SDK: $ver"
     } else {
-        if (Has-Command 'dotnet') {
-            Write-Warn "dotnet is in PATH but failed to run (reinstall .NET SDK if needed)."
-        }
         Install-DotNetSdk
-        if (Has-Command 'dotnet') {
-            $ver = Get-DotNetVersion
-        }
-        if ($ver) {
-            Write-Ok ".NET SDK: $ver"
-        } else {
+        if (-not (Has-Command 'dotnet')) {
             $failures++
+        } else {
+            $ver = (dotnet --version 2>$null)
+            Write-Ok ".NET SDK: $ver"
         }
     }
 
@@ -202,45 +355,19 @@ function Check-Env {
         Write-Warn "config.yaml not found at project root"
     }
 
-    if (Has-Command 'ffprobe') {
-        Write-Ok "ffprobe found (useful for export media tests)"
-    } else {
-        Write-Warn "ffprobe not found (optional, recommended for export validation)"
-        if (Has-Command 'choco') {
-            Write-Warn "Install with Chocolatey: choco install ffmpeg"
-        } elseif (Has-Command 'winget') {
-            Write-Warn "Install with winget: winget install --id Gyan.FFmpeg -e --source winget"
-        } else {
-            Write-Warn "Or download FFmpeg manually from https://ffmpeg.org/download.html"
-        }
-    }
-
-    if (Has-Command 'dotnet-format') {
-        Write-Ok "dotnet-format (code formatter) found"
-    } else {
-        Write-Warn "dotnet-format not found (optional). Install with: dotnet tool install -g dotnet-format"
-    }
-
-    $sln = Join-Path $ProjectRoot 'src\Tmrc.sln'
-    if ((Test-Path $sln) -and $ver) {
-        Write-Ok "Restoring NuGet packages for solution..."
-        try {
-            & dotnet restore $sln
-            if ($LASTEXITCODE -eq 0) {
-                Write-Ok "NuGet packages restored."
-            } else {
-                Write-Warn "dotnet restore failed; build may fail with NU1100. Check network and NuGet sources."
-                $failures++
-            }
-        } catch {
-            Write-Warn "dotnet restore failed: $($_.Exception.Message)"
-            $failures++
-        }
-    }
+    Ensure-OptionalFfmpeg
+    Ensure-OptionalDotnetFormat
+    Ensure-OptionalTesseract
 
     if ($failures -gt 0) {
         Write-Err "Environment check failed with $failures blocking issue(s)."
         exit 1
+    }
+
+    if ($Script:SessionRefreshHints.Count -gt 0) {
+        $tools = ($Script:SessionRefreshHints | Select-Object -Unique) -join ', '
+        Write-Warn "Installed tool(s) not visible in current session: $tools"
+        Write-Warn "Open a new PowerShell window, then re-run: .\devops.ps1 setup"
     }
 
     Write-Ok "Environment check passed."
@@ -253,7 +380,6 @@ function Invoke-DotNet {
     )
     Show-Cmd -Cmd $Cmd
     & $Cmd[0] $Cmd[1..($Cmd.Length - 1)]
-    # No return: output flows to the console; callers read $LASTEXITCODE directly.
 }
 
 function Invoke-TmrcCli {
@@ -270,48 +396,8 @@ function Invoke-TmrcCli {
         exit 1
     }
 
-    $buildCmd = @('dotnet', 'build', $proj)
-    $buildOutput = @(& $buildCmd[0] $buildCmd[1..($buildCmd.Length - 1)] 2>&1)
-    
-    if ($LASTEXITCODE -ne 0) {
-        $joinedOutput = ($buildOutput | ForEach-Object { "$_" }) -join "`n"
-        $isKnownCopyLock = $joinedOutput -match 'MSB3027' -and $joinedOutput -match 'MSB3021' -and $joinedOutput -match 'Tmrc\.Core\.dll'
-        
-        if (-not $isKnownCopyLock) {
-            foreach ($line in $buildOutput) { Write-Host $line }
-            exit $LASTEXITCODE
-        }
-
-        $pidMatches = [regex]::Matches($joinedOutput, '\.NET Host \((\d+)\)')
-        $stalePids = @(
-            $pidMatches |
-            ForEach-Object { $_.Groups[1].Value } |
-            Where-Object { $_ -match '^\d+$' } |
-            Sort-Object -Unique
-        )
-        
-        if ($stalePids.Count -eq 0) {
-            foreach ($line in $buildOutput) { Write-Host $line }
-            exit $LASTEXITCODE
-        }
-
-        Write-Warn "Detected stale .NET host lock on Tmrc.Core.dll. Terminating stale process(es) and retrying once..."
-        foreach ($stalePid in $stalePids) {
-            try {
-                $null = taskkill /PID $stalePid /F
-                Write-Ok "Stopped stale .NET host PID $stalePid"
-            } catch {
-                Write-Warn "Failed to stop PID ${stalePid}: $($_.Exception.Message)"
-            }
-        }
-
-        Invoke-DotNet -Cmd $buildCmd
-        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-    }
-
-    $cmd = @('dotnet', 'run', '--no-build', '--project', $proj, '--') + $CliArgs
+    $cmd = @('dotnet', 'run', '--project', $proj, '--') + $CliArgs
     Invoke-DotNet -Cmd $cmd
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
 function Cmd-Build {
@@ -319,7 +405,6 @@ function Cmd-Build {
     Assert-DotNetSolution
     $sln = Join-Path $ProjectRoot 'src\Tmrc.sln'
     Invoke-DotNet -Cmd @('dotnet', 'build', $sln)
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
 function Cmd-Test {
@@ -327,7 +412,6 @@ function Cmd-Test {
     Assert-DotNetSolution
     $sln = Join-Path $ProjectRoot 'src\Tmrc.sln'
     Invoke-DotNet -Cmd @('dotnet', 'test', $sln)
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
 function Cmd-Lint {
@@ -337,16 +421,15 @@ function Cmd-Lint {
     if (Has-Command 'dotnet-format') {
         $sln = Join-Path $ProjectRoot 'src\Tmrc.sln'
         Invoke-DotNet -Cmd @('dotnet-format', $sln)
-        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     } else {
         Write-Err "dotnet-format is required for lint command."
-        Write-Err "Install with: dotnet tool install -g dotnet-format"
+        Write-Host "Install with: dotnet tool install -g dotnet-format"
         exit 1
     }
 }
 
 function Cmd-Record {
-    Invoke-TmrcCli -CliArgs (@('record') + $Args)
+    Invoke-TmrcCli -CliArgs @('record')
 }
 
 function Cmd-Status {
@@ -356,7 +439,7 @@ function Cmd-Status {
 function Cmd-Dump {
     $timestamp = Get-Date -Format 'yyyy-MM-dd_HH-mm-ss'
     $outPath = Join-Path $ProjectRoot "tmrc_dump_${timestamp}.mp4"
-    Invoke-TmrcCli -CliArgs @('export', '--from', '1000d', '--to', 'now', '-o', $outPath)
+    Invoke-TmrcCli -CliArgs @('export', '--from', '1000d ago', '--to', 'now', '-o', $outPath)
 }
 
 function Cmd-Wipe {
@@ -372,28 +455,92 @@ function Cmd-Clean {
     $sln = Join-Path $ProjectRoot 'src\Tmrc.sln'
     Invoke-DotNet -Cmd @('dotnet', 'clean', $sln)
     Write-Ok "dotnet artifacts cleaned."
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
-function Cmd-CleanPass {
-    $specPath = Join-Path $ProjectRoot 'specs\test.md'
-    if (-not (Test-Path $specPath)) {
-        Write-Err "specs/test.md not found."
+function Cmd-ClearTests {
+    $testPlanPath = Join-Path $ProjectRoot 'specs\test.md'
+    if (-not (Test-Path $testPlanPath)) {
+        Write-Err "Test plan not found at $testPlanPath"
         exit 1
     }
-    $lines = Get-Content $specPath -Encoding UTF8
-    $changed = 0
-    $newLines = $lines | ForEach-Object {
-        $line = $_
-        if ($line -match '^\|\s*(D\d+[a-z]?|\d+[a-z]?)\s*\|' -and $line -match '\|\s*Pass\s*\|$') {
-            $changed++
-            $line -replace '\|\s*Pass\s*\|$', '| |'
-        } else {
-            $line
+
+    $lines = Get-Content -LiteralPath $testPlanPath
+    $updatedLines = @()
+    $clearedRows = 0
+    $passCellIndex = $null
+
+    function Test-IsMarkdownSeparatorRow {
+        param([string[]]$Cells)
+        if ($Cells.Length -eq 0) {
+            return $false
         }
+
+        foreach ($cell in $Cells) {
+            if ($cell -notmatch '^\s*:?-{3,}:?\s*$') {
+                return $false
+            }
+        }
+
+        return $true
     }
-    $newLines | Set-Content $specPath -Encoding UTF8
-    Write-Ok "Cleared $changed pass state(s) in specs/test.md."
+
+    foreach ($line in $lines) {
+        if ($line -notmatch '^\|') {
+            $passCellIndex = $null
+            $updatedLines += $line
+            continue
+        }
+
+        $parts = $line -split '\|', -1
+        if ($parts.Length -lt 3) {
+            $updatedLines += $line
+            continue
+        }
+
+        $cells = @()
+        for ($i = 1; $i -lt ($parts.Length - 1); $i++) {
+            $cells += $parts[$i]
+        }
+
+        $trimmedCells = @($cells | ForEach-Object { $_.Trim() })
+        $isSeparator = Test-IsMarkdownSeparatorRow -Cells $trimmedCells
+
+        if (-not $isSeparator) {
+            $headerPassPos = -1
+            for ($i = 0; $i -lt $trimmedCells.Length; $i++) {
+                if ($trimmedCells[$i] -ieq 'Pass') {
+                    $headerPassPos = $i
+                    break
+                }
+            }
+
+            if ($headerPassPos -ge 0) {
+                # parts has leading and trailing empty segments due to outer '|'
+                $passCellIndex = $headerPassPos + 1
+                $updatedLines += $line
+                continue
+            }
+        }
+
+        if ($isSeparator) {
+            $updatedLines += $line
+            continue
+        }
+
+        if ($null -ne $passCellIndex -and $passCellIndex -lt ($parts.Length - 1)) {
+            if ($parts[$passCellIndex].Trim().Length -gt 0) {
+                $clearedRows++
+            }
+            $parts[$passCellIndex] = ' '
+            $updatedLines += ($parts -join '|')
+            continue
+        }
+
+        $updatedLines += $line
+    }
+
+    Set-Content -LiteralPath $testPlanPath -Value $updatedLines
+    Write-Ok "Cleared Pass column in specs/test.md ($clearedRows row(s) reset)."
 }
 
 if (-not $Command) {
@@ -407,13 +554,13 @@ switch ($Command) {
     'build' { Cmd-Build; break }
     'test' { Cmd-Test; break }
     'lint' { Cmd-Lint; break }
-    'record' { Cmd-Record @Args; break }
+    'clear-tests' { Cmd-ClearTests; break }
+    'record' { Cmd-Record; break }
     'status' { Cmd-Status; break }
     'dump' { Cmd-Dump; break }
     'wipe' { Cmd-Wipe; break }
-    'reindex' { Cmd-Reindex @Args; break }
+    'reindex' { Cmd-Reindex; break }
     'clean' { Cmd-Clean; break }
-    'clean-pass' { Cmd-CleanPass; break }
     'help' { Show-Usage; break }
     default {
         Write-Err "Unknown command: $Command"

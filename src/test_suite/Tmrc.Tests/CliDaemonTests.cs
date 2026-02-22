@@ -29,7 +29,7 @@ public class CliDaemonTests
         }
 
         var solutionRoot = dir;
-        var cliDir = Path.Combine(solutionRoot, "src", "Tmrc.Cli", "bin", "Debug", "net8.0");
+        var cliDir = Path.Combine(solutionRoot, "Tmrc.Cli", "bin", "Debug", "net8.0");
         var cliDll = Path.Combine(cliDir, "Tmrc.Cli.dll");
 
         if (!File.Exists(cliDll))
@@ -59,16 +59,51 @@ public class CliDaemonTests
 
     private static async Task<(int ExitCode, string StdOut, string StdErr)> RunCliAsync(
         string arguments,
-        string workingDirectory)
+        string workingDirectory,
+        int timeoutMs = 15000)
     {
         using var proc = StartCli(arguments, workingDirectory);
         var stdoutTask = proc.StandardOutput.ReadToEndAsync();
         var stderrTask = proc.StandardError.ReadToEndAsync();
 
+        if (!proc.WaitForExit(timeoutMs))
+        {
+            try
+            {
+                proc.Kill(true);
+            }
+            catch
+            {
+                // ignore cleanup failures in timeout path
+            }
+        }
+
         await Task.WhenAll(stdoutTask, stderrTask);
-        proc.WaitForExit();
         return (proc.ExitCode, stdoutTask.Result, stderrTask.Result);
     }
+    private static void KillProcessSafe(Process? process)
+    {
+        if (process is null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (process.HasExited)
+            {
+                return;
+            }
+
+            process.Kill(true);
+            process.WaitForExit(5000);
+        }
+        catch
+        {
+            // best-effort cleanup for integration tests
+        }
+    }
+
 
     private static string CreateTempConfigRoot()
     {
@@ -122,8 +157,7 @@ storage_root: {0}
             Assert.False(proc.HasExited);
 
             // Cleanup
-            proc.Kill(true);
-            proc.WaitForExit();
+            KillProcessSafe(proc);
         }
         finally
         {
@@ -159,8 +193,7 @@ storage_root: {0}
         {
             try
             {
-                daemonProc?.Kill(true);
-                daemonProc?.WaitForExit();
+                KillProcessSafe(daemonProc);
             }
             catch
             {
@@ -199,8 +232,7 @@ storage_root: {0}
         {
             try
             {
-                daemonProc?.Kill(true);
-                daemonProc?.WaitForExit();
+                KillProcessSafe(daemonProc);
             }
             catch
             {
