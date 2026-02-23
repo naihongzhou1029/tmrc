@@ -271,7 +271,8 @@ public static class Program
         try
         {
             var usage = storage.DiskUsageAsync().GetAwaiter().GetResult();
-            Console.WriteLine($"Disk usage (bytes): {usage}");
+            var usageGb = usage / (1024d * 1024d * 1024d);
+            Console.WriteLine($"Disk usage (GB): {usageGb:F1}");
         }
         catch
         {
