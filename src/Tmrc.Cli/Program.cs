@@ -259,14 +259,30 @@ public static class Program
     {
         var cfg = LoadConfig();
         var storage = new StorageManager(cfg.StorageRoot);
+        var segmentCount = 0;
+        try
+        {
+            var indexPath = storage.IndexPath(cfg.Session);
+            if (File.Exists(indexPath))
+            {
+                var indexStore = new IndexStore(indexPath);
+                segmentCount = indexStore.ListAllSegments().Count;
+            }
+        }
+        catch
+        {
+            // ignore index errors; status should still be available
+        }
 
-        var isRecording = TryGetRunningDaemon(storage, out var pid, out _);
+        var isRecording = TryGetRunningDaemon(storage, out var pid, out var process);
         Console.WriteLine($"Recording: {(isRecording ? "yes" : "no")}");
         if (isRecording)
         {
             Console.WriteLine($"Recorder PID: {pid}");
         }
         Console.WriteLine($"Storage root: {storage.StorageRoot}");
+        Console.WriteLine($"Recorded segments: {segmentCount}");
+        Console.WriteLine($"Recording uptime: {(isRecording && process is not null ? TryGetRecordingUptime(process) : "n/a")}");
 
         try
         {
@@ -280,6 +296,38 @@ public static class Program
         }
 
         return 0;
+    }
+
+    private static string FormatElapsed(TimeSpan elapsed)
+    {
+        if (elapsed < TimeSpan.Zero)
+        {
+            elapsed = TimeSpan.Zero;
+        }
+
+        if (elapsed.TotalHours >= 1)
+        {
+            return $"{(int)elapsed.TotalHours}h {elapsed.Minutes:D2}m {elapsed.Seconds:D2}s";
+        }
+
+        if (elapsed.TotalMinutes >= 1)
+        {
+            return $"{elapsed.Minutes}m {elapsed.Seconds:D2}s";
+        }
+
+        return $"{elapsed.Seconds}s";
+    }
+
+    private static string TryGetRecordingUptime(Process process)
+    {
+        try
+        {
+            return FormatElapsed(DateTimeOffset.UtcNow - process.StartTime.ToUniversalTime());
+        }
+        catch
+        {
+            return "unknown";
+        }
     }
 
     private static int Export(string[] args)

@@ -92,7 +92,9 @@ public sealed class ScreenCapture : IDisposable
                 biCompression = GdiNative.BI_RGB,
                 biSizeImage = size
             },
-            bmiColors = Array.Empty<int>()
+            // BITMAPINFO declares a fixed-length color array (SizeConst = 1),
+            // so marshalling requires exactly one element here.
+            bmiColors = new int[1]
         };
 
         var buffer = new byte[size];
