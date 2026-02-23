@@ -42,9 +42,9 @@ Table of test cases for review and execution. Fill **Actual Result** and **Pass*
 | 33 | Storage | Retention under limits | Add segments all within max_age and total size under max_disk. Run retention. | Assert no segment files are deleted. |
 | 34 | Storage | Retention index pruning | Create temp storage with segments and matching index rows. Run retention so that some segments are evicted. Query the index. | Assert index rows for evicted segments are also removed; remaining index rows reference only existing segment files. |
 | 35 | Storage | Disk full / low space | Create a read-only directory (or a volume at capacity). Set storage_root to that path; start daemon or attempt first write. | Process exits with non-zero; stderr or log contains a clear error message; no silent continue. Optionally assert a toast was triggered (if mock notifier captures it). |
-| 36 | Storage | Usage report | Run the subcommand that lists usage (e.g. `tmrc status` or a dedicated usage command). | Assert output includes disk usage (e.g. per session or total); format matches documentation. |
+| 36 | Storage | Usage report | Run `tmrc status` with known fixture files under storage root (including at least one segment/index file and `tmrc.log`). | Assert output includes human-friendly dynamic units (`bytes`, `MB`, or `GB`) and excludes `tmrc.log` from the reported disk usage. |
 | 37 | Storage | Index create and read | Start daemon (or a test helper) with temp storage_root; trigger write of one segment with known id, time range, and OCR text. Query the index by segment id or time range. | Assert the index returns that segment with the same id, time range, and text. |
-| 38 | Storage | Wipe segments | Run `tmrc wipe` with a storage_root containing segment files and index data. | Assert all files under `segments/` are removed; command exits 0; index may or may not be cleared (per implementation). |
+| 38 | Storage | Wipe recordings and index | Run `tmrc wipe` with a storage_root containing segment files and index data. Then run `tmrc status` and try an export over the old range. | Assert all files under `segments/` are removed and index rows are cleared (e.g. `Recorded segments: 0`); command exits 0; no stale-index "Missing segment file ..." failure caused by pre-wipe data. |
 
 | # | Category | Subject | Action Taken | Expected Result | Actual Result | Pass |
 |---|----------|---------|----------------|---------------------|---------------|-----|
@@ -144,7 +144,7 @@ Table of test cases for review and execution. Fill **Actual Result** and **Pass*
 | 108 | DevOps | devops.ps1 setup | Run `./devops.ps1 setup` on a machine with .NET SDK installed. | Assert exit 0; output contains `[ok]` lines for OS and .NET SDK; optional tools (ffmpeg/ffprobe, dotnet-format, Tesseract) are either detected or reported with actionable guidance. |
 | 109 | DevOps | devops.ps1 dump (happy path) | Ensure FFmpeg is on PATH and MP4 segments exist in storage. Run `./devops.ps1 dump`. | Assert exit 0; a file named `tmrc_dump_<timestamp>.mp4` is created in the project root; file is a valid MP4. |
 | 110 | DevOps | devops.ps1 dump (no segments) | Ensure storage has no MP4 segments. Run `./devops.ps1 dump`. | Assert command exits non-zero or produces an empty/zero-byte file with a clear message; no crash. |
-| 111 | DevOps | devops.ps1 wipe | Create segment files in storage. Run `./devops.ps1 wipe`. | Assert all segment files under `segments/` are removed; exit 0. |
+| 111 | DevOps | devops.ps1 wipe | Create segment files and index rows in storage. Run `./devops.ps1 wipe`, then `./devops.ps1 status`. | Assert segments and index are both cleared (`Recorded segments: 0`); exit 0. |
 | 112 | DevOps | devops.ps1 reindex | Create segments with missing OCR text. Run `./devops.ps1 reindex`. | Assert segments without OCR are re-processed; exit 0 (requires Tesseract and FFmpeg). |
 | 113 | DevOps | devops.ps1 reindex --force | Create segments with existing OCR text. Run `./devops.ps1 reindex --force`. | Assert all segments are re-processed; exit 0. |
 | 114 | DevOps | devops.ps1 clear-tests | Populate Pass column in `specs/test.md` with values. Run `./devops.ps1 clear-tests`. | Assert all Pass column values are cleared; other columns (Actual Result, etc.) are unchanged; exit 0. |
@@ -169,6 +169,8 @@ These cases are added to prevent regressions seen in `record`, `status`, and `du
 | R3 | DevOps | `devops.ps1 dump` completion SLO | With a small fixture (or short real recording), run `./devops.ps1 dump` and measure elapsed time. | Command exits 0 and prints completion message within a bounded time budget (recommended: <= 120s for small fixture); no silent hang. |
 | R4 | Recall (Export) | FFmpeg concat list encoding compatibility | Export MP4 using segment list generation path (`tmrc export ... --format mp4`) on Windows with FFmpeg. | Export succeeds with no concat parser error such as `unknown keyword '﻿file'` (UTF-8 BOM issue). |
 | R5 | Recall (Export) | FFmpeg process I/O robustness | Run export with FFmpeg stderr-heavy output (normal verbose path) and verify command completion. | Export process drains stdout/stderr without deadlock; command completes or times out with explicit error message (no indefinite stall). |
+| R6 | Storage | `wipe` consistency (segments + index) | Record some segments, confirm `tmrc status` shows non-zero recorded count, run `tmrc wipe`, then run `tmrc status` and `tmrc export` for a broad range. | `status` reports `Recorded segments: 0`; export does not fail due to stale pre-wipe index rows (it should report no segments/index instead). |
+| R7 | Operations | `status` disk usage excludes logs | Create only `tmrc.log` under storage root (no segment/index data), then run `tmrc status`. | Disk usage reflects recording/index data only (log excluded), and uses dynamic human-friendly units (`bytes`, `MB`, `GB`). |
 
 ### CI-required smoke subset (Windows)
 

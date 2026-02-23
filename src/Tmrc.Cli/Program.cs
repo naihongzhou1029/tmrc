@@ -308,8 +308,7 @@ public static class Program
         try
         {
             var usage = storage.DiskUsageAsync().GetAwaiter().GetResult();
-            var usageGb = usage / (1024d * 1024d * 1024d);
-            Console.WriteLine($"Disk usage (GB): {usageGb:F1}");
+            Console.WriteLine($"Disk usage: {FormatDiskUsage(usage)}");
         }
         catch
         {
@@ -349,6 +348,31 @@ public static class Program
         {
             return "unknown";
         }
+    }
+
+    private static string FormatDiskUsage(long bytes)
+    {
+        if (bytes < 0)
+        {
+            bytes = 0;
+        }
+
+        const double mb = 1024d * 1024d;
+        const double gb = 1024d * 1024d * 1024d;
+
+        if (bytes < 1024)
+        {
+            return $"{bytes} bytes";
+        }
+
+        if (bytes < (long)gb)
+        {
+            var usageMb = bytes / mb;
+            return $"{usageMb:F1} MB";
+        }
+
+        var usageGb = bytes / gb;
+        return $"{usageGb:F1} GB";
     }
 
     private static int Export(string[] args)
@@ -760,12 +784,32 @@ public static class Program
     {
         var cfg = LoadConfig();
         var storage = new StorageManager(cfg.StorageRoot);
-        if (Directory.Exists(storage.SegmentsDirectory))
+        try
         {
-            Directory.Delete(storage.SegmentsDirectory, recursive: true);
+            if (Directory.Exists(storage.SegmentsDirectory))
+            {
+                Directory.Delete(storage.SegmentsDirectory, recursive: true);
+            }
             Directory.CreateDirectory(storage.SegmentsDirectory);
+
+            var indexDir = Path.GetDirectoryName(storage.IndexPath(cfg.Session));
+            if (!string.IsNullOrEmpty(indexDir))
+            {
+                if (Directory.Exists(indexDir))
+                {
+                    Directory.Delete(indexDir, recursive: true);
+                }
+
+                Directory.CreateDirectory(indexDir);
+            }
         }
-        Console.WriteLine("All recordings wiped (Windows implementation placeholder).");
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Failed to wipe recordings/index: {ex.Message}");
+            return 1;
+        }
+
+        Console.WriteLine("All recordings and index wiped.");
         return 0;
     }
 

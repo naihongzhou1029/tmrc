@@ -36,10 +36,16 @@ public sealed class StorageManager
         return await Task.Run(() =>
         {
             long total = 0;
+            var logFullPath = Path.GetFullPath(LogFilePath);
             foreach (var file in Directory.EnumerateFiles(StorageRoot, "*", SearchOption.AllDirectories))
             {
                 try
                 {
+                    if (string.Equals(Path.GetFullPath(file), logFullPath, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
                     var info = new FileInfo(file);
                     total += info.Length;
                 }
