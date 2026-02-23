@@ -133,16 +133,37 @@ public static class Program
 
     private static int Record(string[] args)
     {
-        // record           -> start
+        // record           -> toggle
         // record --start   -> start
         // record --stop    -> stop
-        var sub = args.Length > 0 ? args[0] : "--start";
-        return sub switch
+        // record --status  -> status
+        if (args.Length == 0)
         {
-            "--start" => StartRecording(),
-            "--stop" => StopRecording(),
-            _ => StartRecording()
-        };
+            return ToggleRecording();
+        }
+
+        var sub = args[0];
+        switch (sub)
+        {
+            case "--start":
+                return StartRecording();
+            case "--stop":
+                return StopRecording();
+            case "--status":
+                return Status(Array.Empty<string>());
+            default:
+                Console.Error.WriteLine($"Unknown record option: {sub}");
+                Console.Error.WriteLine("Usage: tmrc record [--start|--stop|--status]");
+                return 1;
+        }
+    }
+
+    private static int ToggleRecording()
+    {
+        var storage = CreateStorageManager();
+        return TryGetRunningDaemon(storage, out _, out _)
+            ? StopRecording()
+            : StartRecording();
     }
 
     private static int StartRecording()

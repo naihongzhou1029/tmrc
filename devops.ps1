@@ -396,7 +396,15 @@ function Invoke-TmrcCli {
         exit 1
     }
 
-    $cmd = @('dotnet', 'run', '--project', $proj, '--') + $CliArgs
+    # No implicit build outside the build target: run existing CLI output directly.
+    # This also avoids dotnet-run project pipeline and apphost file-lock behavior.
+    $cliDll = Join-Path $ProjectRoot 'src\Tmrc.Cli\bin\Debug\net8.0\Tmrc.Cli.dll'
+    if (-not (Test-Path $cliDll)) {
+        Write-Err "CLI build output not found: $cliDll"
+        Write-Err "Run ./devops.ps1 build first."
+        exit 1
+    }
+    $cmd = @('dotnet', $cliDll) + $CliArgs
     Invoke-DotNet -Cmd $cmd
 }
 
@@ -411,7 +419,7 @@ function Cmd-Test {
     Check-Env -Quiet
     Assert-DotNetSolution
     $sln = Join-Path $ProjectRoot 'src\Tmrc.sln'
-    Invoke-DotNet -Cmd @('dotnet', 'test', $sln)
+    Invoke-DotNet -Cmd @('dotnet', 'test', '--no-build', $sln)
 }
 
 function Cmd-Lint {

@@ -133,7 +133,9 @@ public static class VideoExport
 
     private static void WriteConcatList(string listPath, IReadOnlyList<string> segmentPaths)
     {
-        using var writer = new StreamWriter(listPath, false, Encoding.UTF8);
+        // FFmpeg concat demuxer expects plain "file ..." at byte 0.
+        // Avoid UTF-8 BOM, which can make the first token appear as "﻿file".
+        using var writer = new StreamWriter(listPath, false, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
         foreach (var p in segmentPaths)
         {
             var escaped = p.Replace("'", "''", StringComparison.Ordinal);
@@ -184,10 +186,57 @@ public static class VideoExport
                 return false;
             }
 
-            process.StandardOutput.ReadToEnd();
-            process.StandardError.ReadToEnd();
-            process.WaitForExit(120_000);
-            return process.ExitCode == 0;
+            var stdOut = new StringBuilder();
+            var stdErr = new StringBuilder();
+            process.OutputDataReceived += (_, e) =>
+            {
+                if (e.Data is not null)
+                {
+                    stdOut.AppendLine(e.Data);
+                }
+            };
+            process.ErrorDataReceived += (_, e) =>
+            {
+                if (e.Data is not null)
+                {
+                    stdErr.AppendLine(e.Data);
+                }
+            };
+
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+
+            if (!process.WaitForExit(120_000))
+            {
+                try
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+                catch
+                {
+                    // best-effort
+                }
+
+                Console.Error.WriteLine("FFmpeg timed out after 120 seconds.");
+                return false;
+            }
+
+            // Ensure async stream handlers have flushed.
+            process.WaitForExit();
+
+            if (process.ExitCode != 0)
+            {
+                var outText = stdOut.ToString();
+                var errText = stdErr.ToString();
+                var detail = string.IsNullOrWhiteSpace(errText) ? outText : errText;
+                if (!string.IsNullOrWhiteSpace(detail))
+                {
+                    Console.Error.WriteLine(detail.Trim());
+                }
+                return false;
+            }
+
+            return true;
         }
         catch
         {
