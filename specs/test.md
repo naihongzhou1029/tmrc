@@ -158,6 +158,30 @@ Table of test cases for review and execution. Fill **Actual Result** and **Pass*
 
 ---
 
+## Regression Addendum (CLI/DevOps trivial ops)
+
+These cases are added to prevent regressions seen in `record`, `status`, and `dump` command flows.
+
+| ID | Category | Subject | Action Taken | Expected Result | Actual Result | Pass |
+|---|---|---|---|---|---|---|
+| R1 | CLI & Daemon | Bare `record` toggle (start then stop) | Run `tmrc record` once, run `tmrc status`, then run `tmrc record` again, and run `tmrc status` again. | First `record` starts daemon (`Recording: yes`); second bare `record` stops daemon (`Recording: no`). |
+| R2 | DevOps | `devops.ps1 status` while recording | Start recording via `./devops.ps1 record`; run `./devops.ps1 status` repeatedly (e.g. 5 times) while daemon is running. | Each call exits 0 quickly and consistently; no build/copy lock retries (no MSB3026/MSB3021); status output remains responsive. |
+| R3 | DevOps | `devops.ps1 dump` completion SLO | With a small fixture (or short real recording), run `./devops.ps1 dump` and measure elapsed time. | Command exits 0 and prints completion message within a bounded time budget (recommended: <= 120s for small fixture); no silent hang. |
+| R4 | Recall (Export) | FFmpeg concat list encoding compatibility | Export MP4 using segment list generation path (`tmrc export ... --format mp4`) on Windows with FFmpeg. | Export succeeds with no concat parser error such as `unknown keyword '﻿file'` (UTF-8 BOM issue). |
+| R5 | Recall (Export) | FFmpeg process I/O robustness | Run export with FFmpeg stderr-heavy output (normal verbose path) and verify command completion. | Export process drains stdout/stderr without deadlock; command completes or times out with explicit error message (no indefinite stall). |
+
+### CI-required smoke subset (Windows)
+
+Run these on every PR/merge to prevent high-frequency command regressions:
+
+- `R1` Bare `record` toggle (start/stop)
+- `R2` `devops.ps1 status` while recording
+- `R3` `devops.ps1 dump` completion SLO
+- Existing `109` (`devops.ps1 dump` happy path)
+- Existing `76`, `78`, `79` (daemon start/discovery/stop) once E2E skip is removed
+
+Implementation note for CI: prefer time-bounded assertions (timeout + clear failure logs) for command responsiveness tests.
+
 ## Notes for review
 
 - **Action Taken:** What to do in order (create files, run commands, call APIs).
