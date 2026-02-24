@@ -69,6 +69,28 @@ public sealed class EventSegmenter
         }
     }
 
+    /// <summary>
+    /// Force-flush an active segment when it reaches or exceeds <paramref name="maxFrames"/>.
+    /// Returns true when a flush happened.
+    /// </summary>
+    public bool FlushIfOpenAndAtLeastFrames(int maxFrames, IList<Segment> flushedSegments)
+    {
+        if (flushedSegments is null) throw new ArgumentNullException(nameof(flushedSegments));
+        if (!_hasOpenSegment || maxFrames <= 0)
+        {
+            return false;
+        }
+
+        var length = _lastEventFrame - _currentStartFrame + 1;
+        if (length < maxFrames)
+        {
+            return false;
+        }
+
+        FlushCurrentSegment(flushedSegments);
+        return true;
+    }
+
     private void FlushCurrentSegment(IList<Segment> flushedSegments)
     {
         var length = _lastEventFrame - _currentStartFrame + 1;

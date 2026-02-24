@@ -45,5 +45,42 @@ public class RecordingTests
         Assert.Equal(0, s.StartFrame);
         Assert.True(s.EndFrame >= 30);
     }
+
+    [Fact(DisplayName = "Idle frames do not create segments")]
+    public void IdleFrames_DoNotCreateSegments()
+    {
+        var seg = new EventSegmenter();
+        var flushed = new List<EventSegmenter.Segment>();
+
+        for (var i = 0; i < 20; i++)
+        {
+            seg.OnFrame(frameIndex: i, hasEvent: false, flushedSegments: flushed);
+        }
+
+        seg.FlushTail(flushed);
+        Assert.Empty(flushed);
+    }
+
+    [Fact(DisplayName = "Forced split only flushes active segments")]
+    public void ForcedSplit_FlushesOnlyWhenActive()
+    {
+        var seg = new EventSegmenter();
+        var flushed = new List<EventSegmenter.Segment>();
+
+        // No open segment yet.
+        var idleForced = seg.FlushIfOpenAndAtLeastFrames(maxFrames: 5, flushedSegments: flushed);
+        Assert.False(idleForced);
+        Assert.Empty(flushed);
+
+        // Active run should be flushable by max-frame split.
+        for (var i = 0; i < 6; i++)
+        {
+            seg.OnFrame(frameIndex: i, hasEvent: true, flushedSegments: flushed);
+        }
+
+        var activeForced = seg.FlushIfOpenAndAtLeastFrames(maxFrames: 5, flushedSegments: flushed);
+        Assert.True(activeForced);
+        Assert.Single(flushed);
+    }
 }
 

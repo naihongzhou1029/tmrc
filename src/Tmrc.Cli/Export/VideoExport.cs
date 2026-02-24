@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
+using System.Threading;
 using Tmrc.Core.Config;
 
 namespace Tmrc.Cli.Export;
@@ -74,9 +75,12 @@ public static class VideoExport
                 "-pix_fmt", "yuv420p"
             };
             args.AddRange(qualityArgs);
+            args.Add("-progress");
+            args.Add("pipe:1");
+            args.Add("-nostats");
             args.Add(outputPath);
 
-            return RunFfmpeg(args);
+            return RunFfmpeg(args, timeoutMs: Timeout.Infinite);
         }
         finally
         {
@@ -118,9 +122,11 @@ public static class VideoExport
                 "-i", tempMp4,
                 "-vf", filter,
                 "-loop", "0",
+                "-progress", "pipe:1",
+                "-nostats",
                 outputPath
             };
-            return RunFfmpeg(args);
+            return RunFfmpeg(args, timeoutMs: Timeout.Infinite);
         }
         finally
         {
@@ -163,7 +169,7 @@ public static class VideoExport
         };
     }
 
-    private static bool RunFfmpeg(List<string> args)
+    private static bool RunFfmpeg(List<string> args, int timeoutMs)
     {
         try
         {
@@ -188,11 +194,51 @@ public static class VideoExport
 
             var stdOut = new StringBuilder();
             var stdErr = new StringBuilder();
+            var progressLock = new object();
+            var nextProgressAt = DateTime.UtcNow;
+            string? progressTime = null;
+            string? progressSpeed = null;
+            string? progressFps = null;
+            string? progressFrame = null;
             process.OutputDataReceived += (_, e) =>
             {
                 if (e.Data is not null)
                 {
-                    stdOut.AppendLine(e.Data);
+                    if (TryParseProgressLine(e.Data, out var key, out var value))
+                    {
+                        lock (progressLock)
+                        {
+                            switch (key)
+                            {
+                                case "out_time":
+                                    progressTime = value;
+                                    break;
+                                case "speed":
+                                    progressSpeed = value;
+                                    break;
+                                case "fps":
+                                    progressFps = value;
+                                    break;
+                                case "frame":
+                                    progressFrame = value;
+                                    break;
+                                case "progress":
+                                    if (value == "continue")
+                                    {
+                                        EmitProgress(false);
+                                    }
+                                    else if (value == "end")
+                                    {
+                                        EmitProgress(true);
+                                    }
+                                    break;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        stdOut.AppendLine(e.Data);
+                    }
                 }
             };
             process.ErrorDataReceived += (_, e) =>
@@ -203,10 +249,61 @@ public static class VideoExport
                 }
             };
 
+            void EmitProgress(bool force)
+            {
+                if (!force && DateTime.UtcNow < nextProgressAt)
+                {
+                    return;
+                }
+
+                if (string.IsNullOrWhiteSpace(progressTime) &&
+                    string.IsNullOrWhiteSpace(progressSpeed) &&
+                    string.IsNullOrWhiteSpace(progressFrame))
+                {
+                    return;
+                }
+
+                var parts = new List<string>();
+                if (!string.IsNullOrWhiteSpace(progressTime))
+                {
+                    parts.Add($"time={progressTime}");
+                }
+                if (!string.IsNullOrWhiteSpace(progressFrame))
+                {
+                    parts.Add($"frame={progressFrame}");
+                }
+                if (!string.IsNullOrWhiteSpace(progressFps))
+                {
+                    parts.Add($"fps={progressFps}");
+                }
+                if (!string.IsNullOrWhiteSpace(progressSpeed))
+                {
+                    parts.Add($"speed={progressSpeed}");
+                }
+
+                Console.WriteLine("[ffmpeg] " + string.Join(" ", parts));
+                nextProgressAt = DateTime.UtcNow.AddSeconds(2);
+            }
+
+            static bool TryParseProgressLine(string line, out string key, out string value)
+            {
+                var idx = line.IndexOf('=');
+                if (idx <= 0 || idx >= line.Length - 1)
+                {
+                    key = string.Empty;
+                    value = string.Empty;
+                    return false;
+                }
+
+                key = line[..idx];
+                value = line[(idx + 1)..];
+                return true;
+            }
+
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
 
-            if (!process.WaitForExit(120_000))
+            if (!process.WaitForExit(timeoutMs))
             {
                 try
                 {
@@ -217,7 +314,8 @@ public static class VideoExport
                     // best-effort
                 }
 
-                Console.Error.WriteLine("FFmpeg timed out after 120 seconds.");
+                var timeoutText = timeoutMs == Timeout.Infinite ? "infinite timeout" : $"{timeoutMs} ms";
+                Console.Error.WriteLine($"FFmpeg timed out after {timeoutText}.");
                 return false;
             }
 

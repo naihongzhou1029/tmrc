@@ -14,6 +14,7 @@ using Tmrc.Core.Recording;
 using Tmrc.Cli.Capture;
 using Tmrc.Cli.Export;
 using Tmrc.Cli.Indexing;
+using Tmrc.Cli.Native;
 using Tmrc.Cli.Recording;
 using Tmrc.Cli.Support;
 
@@ -1118,7 +1119,9 @@ public static class Program
         }
 
         var maxSegmentDurationMs = cfg.SegmentMaxDurationMs;
-        var lastSegmentFlushTime = DateTimeOffset.UtcNow;
+        var maxSegmentFrames = Math.Max(1, (int)Math.Ceiling(maxSegmentDurationMs / (double)sampleIntervalMs));
+        var pauseWhenLocked = !cfg.RecordWhenLockedOrSleeping;
+        var wasPausedForLock = false;
 
         // Recording loop: real capture (GDI) or simulated; event-based segmenter; MP4 or .bin output.
         while (!shutdownToken.IsCancellationRequested)
@@ -1127,9 +1130,25 @@ public static class Program
             bool hasEvent;
             byte[]? frameBgra = null;
             int frameWidth = 0, frameHeight = 0;
+            var pauseForLockedDesktop = pauseWhenLocked && !WindowsSessionState.IsInteractiveDesktop();
 
-            if (useRealCapture && screenCapture != null)
+            if (pauseForLockedDesktop)
             {
+                hasEvent = false;
+                if (!wasPausedForLock)
+                {
+                    logger.Info("Recording paused while session is locked.");
+                }
+                wasPausedForLock = true;
+            }
+            else if (useRealCapture && screenCapture != null)
+            {
+                if (wasPausedForLock)
+                {
+                    logger.Info("Session unlocked; recording resumed.");
+                    wasPausedForLock = false;
+                }
+
                 try
                 {
                     var (bgra, evt) = screenCapture.CaptureFrame();
@@ -1158,33 +1177,25 @@ public static class Program
             }
             else
             {
+                if (wasPausedForLock)
+                {
+                    logger.Info("Session unlocked; recording resumed.");
+                    wasPausedForLock = false;
+                }
                 hasEvent = random.NextDouble() < 0.3;
-            }
-
-            // Force a periodic flush so segments are created at regular intervals
-            // even when the screen diff stays below the event threshold.
-            var elapsed = DateTimeOffset.UtcNow - lastSegmentFlushTime;
-            if (!hasEvent && elapsed.TotalMilliseconds >= maxSegmentDurationMs)
-            {
-                hasEvent = true;
             }
 
             segmenter.OnFrame(frameIndex, hasEvent, flushedSegments);
 
-            // Force-close long-running open segments so they appear in the index.
-            if (flushedSegments.Count == 0 && elapsed.TotalMilliseconds >= maxSegmentDurationMs)
+            // Split only active long-running segments; never synthesize activity during idle.
+            if (flushedSegments.Count == 0)
             {
-                segmenter.FlushTail(flushedSegments);
+                segmenter.FlushIfOpenAndAtLeastFrames(maxSegmentFrames, flushedSegments);
             }
 
             if (shutdownToken.IsCancellationRequested)
             {
                 segmenter.FlushTail(flushedSegments);
-            }
-
-            if (flushedSegments.Count > 0)
-            {
-                lastSegmentFlushTime = DateTimeOffset.UtcNow;
             }
 
             if (logLevel == LogLevel.Debug && (hasEvent || flushedSegments.Count > 0))

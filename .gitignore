@@ -9,6 +9,7 @@
 
 # Export / dump output
 *.mp4
+tmrc_dump_debug.txt
 
 # Xcode
 DerivedData/
