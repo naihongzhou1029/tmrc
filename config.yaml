@@ -5,6 +5,14 @@
 # Default 100 ms = 10 FPS. Time is used as the sample rate for event-based recording.
 sample_rate_ms: 100
 
+# Maximum segment duration in milliseconds. Recorder force-flushes at this interval
+# so segments keep progressing even when screen-diff events are sparse.
+segment_max_duration_ms: 1000
+
+# Screen-diff threshold for triggering an event from two consecutive frames.
+# Lower values are more sensitive; set 0 to treat any pixel change as an event.
+capture_diff_threshold: 100000
+
 # Which display(s) to capture. Options: main (default), or combined / display index (TBD).
 # Default: main display only.
 display: main

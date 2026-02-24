@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.Text;
 
 namespace Tmrc.Cli.Recording;
 
@@ -90,9 +91,42 @@ public static class Mp4SegmentWriter
                 return false;
             }
 
-            process.StandardOutput.ReadToEnd();
-            process.StandardError.ReadToEnd();
-            process.WaitForExit(60_000);
+            var stdOut = new StringBuilder();
+            var stdErr = new StringBuilder();
+            process.OutputDataReceived += (_, e) =>
+            {
+                if (e.Data is not null)
+                {
+                    stdOut.AppendLine(e.Data);
+                }
+            };
+            process.ErrorDataReceived += (_, e) =>
+            {
+                if (e.Data is not null)
+                {
+                    stdErr.AppendLine(e.Data);
+                }
+            };
+
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+
+            if (!process.WaitForExit(60_000))
+            {
+                try
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+                catch
+                {
+                    // best-effort
+                }
+
+                return false;
+            }
+
+            // Ensure async handlers are drained.
+            process.WaitForExit();
             return process.ExitCode == 0;
         }
         finally

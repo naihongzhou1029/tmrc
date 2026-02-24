@@ -171,6 +171,7 @@ These cases are added to prevent regressions seen in `record`, `status`, and `du
 | R5 | Recall (Export) | FFmpeg process I/O robustness | Run export with FFmpeg stderr-heavy output (normal verbose path) and verify command completion. | Export process drains stdout/stderr without deadlock; command completes or times out with explicit error message (no indefinite stall). |
 | R6 | Storage | `wipe` consistency (segments + index) | Record some segments, confirm `tmrc status` shows non-zero recorded count, run `tmrc wipe`, then run `tmrc status` and `tmrc export` for a broad range. | `status` reports `Recorded segments: 0`; export does not fail due to stale pre-wipe index rows (it should report no segments/index instead). |
 | R7 | Operations | `status` disk usage excludes logs | Create only `tmrc.log` under storage root (no segment/index data), then run `tmrc status`. | Disk usage reflects recording/index data only (log excluded), and uses dynamic human-friendly units (`bytes`, `MB`, `GB`). |
+| R8 | Recording | Segment progression under low-diff activity (1s expectation) | Start recording with `sample_rate_ms: 100`, `segment_max_duration_ms: 1000`, and `capture_diff_threshold: 100000`. Perform low-diff UI activity (e.g. small scroll/cursor movement/typing) for 2-3 seconds. Poll `tmrc status` every ~1 second. | `Recorded segments` increases within about 1 second and keeps progressing over time; behavior does not depend on large screen-diff spikes only. |
 
 ### CI-required smoke subset (Windows)
 

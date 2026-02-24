@@ -51,6 +51,20 @@ public static class ConfigLoader
                         builder = builder with { SampleRateMs = sr };
                     }
                     break;
+                case "segment_max_duration_ms":
+                    if (entry.Value is YamlScalarNode segDurNode &&
+                        int.TryParse(segDurNode.Value, out var segDur))
+                    {
+                        builder = builder with { SegmentMaxDurationMs = segDur };
+                    }
+                    break;
+                case "capture_diff_threshold":
+                    if (entry.Value is YamlScalarNode diffNode &&
+                        int.TryParse(diffNode.Value, out var diffThreshold))
+                    {
+                        builder = builder with { CaptureDiffThreshold = diffThreshold };
+                    }
+                    break;
                 case "session":
                     if (entry.Value is YamlScalarNode sNode && !string.IsNullOrWhiteSpace(sNode.Value))
                     {
@@ -164,6 +178,14 @@ public static class ConfigLoader
         {
             // align with Swift tests: either default or validation error.
             cfg = cfg with { SampleRateMs = 100 };
+        }
+        if (cfg.SegmentMaxDurationMs <= 0)
+        {
+            cfg = cfg with { SegmentMaxDurationMs = 1000 };
+        }
+        if (cfg.CaptureDiffThreshold < 0)
+        {
+            cfg = cfg with { CaptureDiffThreshold = 100_000 };
         }
 
         if (string.IsNullOrWhiteSpace(cfg.Session))

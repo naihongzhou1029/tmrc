@@ -32,6 +32,8 @@ public enum ExportQuality
 public sealed record class TmrcConfig
 {
     public double SampleRateMs { get; init; } = 100;
+    public int SegmentMaxDurationMs { get; init; } = 1000;
+    public int CaptureDiffThreshold { get; init; } = 100_000;
 
     public string Session { get; init; } = "default";
 

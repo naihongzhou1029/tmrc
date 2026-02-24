@@ -302,6 +302,9 @@ public static class Program
             Console.WriteLine($"Recorder PID: {pid}");
         }
         Console.WriteLine($"Storage root: {storage.StorageRoot}");
+        Console.WriteLine($"Configured sample rate (ms): {cfg.SampleRateMs}");
+        Console.WriteLine($"Configured max segment duration (ms): {cfg.SegmentMaxDurationMs}");
+        Console.WriteLine($"Configured capture diff threshold: {cfg.CaptureDiffThreshold}");
         Console.WriteLine($"Recorded segments: {segmentCount}");
         Console.WriteLine($"Recording uptime: {(isRecording && process is not null ? TryGetRecordingUptime(process) : "n/a")}");
 
@@ -945,13 +948,15 @@ public static class Program
         var frameIndex = 0;
         var sampleIntervalMs = Math.Max(1, (int)cfg.SampleRateMs);
         var baseTime = DateTimeOffset.Now;
+        var lastFrameWidth = 0;
+        var lastFrameHeight = 0;
         long nextWriteOrder = indexStore.GetMaxWriteOrder() + 1;
 
         ScreenCapture? screenCapture = null;
         var useRealCapture = false;
         try
         {
-            screenCapture = new ScreenCapture(diffThreshold: 500_000);
+            screenCapture = new ScreenCapture(diffThreshold: cfg.CaptureDiffThreshold);
             useRealCapture = true;
             logger.Info("Using real screen capture (GDI).");
         }
@@ -1041,48 +1046,9 @@ public static class Program
         logger.Info("tmrc daemon starting.");
         ipcThread.Start();
 
-        // Recording loop: real capture (GDI) or simulated; event-based segmenter; MP4 or .bin output.
-        while (!shutdownToken.IsCancellationRequested)
+        void EmitFlushedSegments(IList<EventSegmenter.Segment> segmentsToWrite, int frameWidth, int frameHeight)
         {
-            flushedSegments.Clear();
-            bool hasEvent;
-            byte[]? frameBgra = null;
-            int frameWidth = 0, frameHeight = 0;
-
-            if (useRealCapture && screenCapture != null)
-            {
-                try
-                {
-                    var (bgra, evt) = screenCapture.CaptureFrame();
-                    hasEvent = evt;
-                    if (bgra.Length > 0)
-                    {
-                        frameBgra = bgra;
-                        frameWidth = screenCapture.Width;
-                        frameHeight = screenCapture.Height;
-                        if (hasEvent)
-                        {
-                            segmentFrames.Add(bgra);
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    logger.Warn($"Capture frame failed: {ex.Message}");
-                    hasEvent = false;
-                }
-            }
-            else
-            {
-                hasEvent = random.NextDouble() < 0.3;
-            }
-
-            segmenter.OnFrame(frameIndex, hasEvent, flushedSegments);
-
-            if (logLevel == LogLevel.Debug && (hasEvent || flushedSegments.Count > 0))
-                logger.Debug($"frame {frameIndex} hasEvent={hasEvent} flushed={flushedSegments.Count}");
-
-            foreach (var seg in flushedSegments)
+            foreach (var seg in segmentsToWrite)
             {
                 var writeOrder = nextWriteOrder++;
                 var start = baseTime.AddMilliseconds(seg.StartFrame * sampleIntervalMs);
@@ -1149,6 +1115,84 @@ public static class Program
                     segmentFrames.Clear();
                 }
             }
+        }
+
+        var maxSegmentDurationMs = cfg.SegmentMaxDurationMs;
+        var lastSegmentFlushTime = DateTimeOffset.UtcNow;
+
+        // Recording loop: real capture (GDI) or simulated; event-based segmenter; MP4 or .bin output.
+        while (!shutdownToken.IsCancellationRequested)
+        {
+            flushedSegments.Clear();
+            bool hasEvent;
+            byte[]? frameBgra = null;
+            int frameWidth = 0, frameHeight = 0;
+
+            if (useRealCapture && screenCapture != null)
+            {
+                try
+                {
+                    var (bgra, evt) = screenCapture.CaptureFrame();
+                    hasEvent = evt;
+                    if (bgra.Length > 0)
+                    {
+                        frameBgra = bgra;
+                        frameWidth = screenCapture.Width;
+                        frameHeight = screenCapture.Height;
+                        lastFrameWidth = frameWidth;
+                        lastFrameHeight = frameHeight;
+                        segmentFrames.Add(bgra);
+                    }
+                    else
+                    {
+                        // Keep recording progression even when capture API returns no frame.
+                        // Timed forced flush will emit a placeholder segment if needed.
+                        logger.Warn("Capture returned empty frame; waiting for timed segment flush.");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.Warn($"Capture frame failed: {ex.Message}");
+                    hasEvent = false;
+                }
+            }
+            else
+            {
+                hasEvent = random.NextDouble() < 0.3;
+            }
+
+            // Force a periodic flush so segments are created at regular intervals
+            // even when the screen diff stays below the event threshold.
+            var elapsed = DateTimeOffset.UtcNow - lastSegmentFlushTime;
+            if (!hasEvent && elapsed.TotalMilliseconds >= maxSegmentDurationMs)
+            {
+                hasEvent = true;
+            }
+
+            segmenter.OnFrame(frameIndex, hasEvent, flushedSegments);
+
+            // Force-close long-running open segments so they appear in the index.
+            if (flushedSegments.Count == 0 && elapsed.TotalMilliseconds >= maxSegmentDurationMs)
+            {
+                segmenter.FlushTail(flushedSegments);
+            }
+
+            if (shutdownToken.IsCancellationRequested)
+            {
+                segmenter.FlushTail(flushedSegments);
+            }
+
+            if (flushedSegments.Count > 0)
+            {
+                lastSegmentFlushTime = DateTimeOffset.UtcNow;
+            }
+
+            if (logLevel == LogLevel.Debug && (hasEvent || flushedSegments.Count > 0))
+                logger.Debug($"frame {frameIndex} hasEvent={hasEvent} flushed={flushedSegments.Count}");
+
+            var emitWidth = frameWidth > 0 ? frameWidth : lastFrameWidth;
+            var emitHeight = frameHeight > 0 ? frameHeight : lastFrameHeight;
+            EmitFlushedSegments(flushedSegments, emitWidth, emitHeight);
 
             // Apply retention policy after writing new segments; prune index for evicted paths.
             try
@@ -1168,6 +1212,12 @@ public static class Program
             frameIndex++;
             Thread.Sleep(sampleIntervalMs);
         }
+
+        // If shutdown arrives between loop iterations (e.g. during sleep),
+        // flush any in-progress segment so the tail is not dropped.
+        flushedSegments.Clear();
+        segmenter.FlushTail(flushedSegments);
+        EmitFlushedSegments(flushedSegments, lastFrameWidth, lastFrameHeight);
 
         screenCapture?.Dispose();
         logger.Info("tmrc daemon shutting down.");
