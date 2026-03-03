@@ -22,9 +22,13 @@ build/
 *.perspectivev3
 xcuserdata/
 
+# Claude Code
+CLAUDE.md
+
 # .NET
 bin/
 obj/
+publish/
 *.user
 *.suo
 *.cache

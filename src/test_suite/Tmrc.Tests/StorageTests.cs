@@ -13,7 +13,7 @@ public class StorageTests
     [Fact(DisplayName = "Storage root default from config")]
     public void StorageRootDefaultFromConfig()
     {
-        var cfg = ConfigLoader.LoadFromYaml("");
+        var cfg = ConfigLoader.LoadFromIni("");
         var expected = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             ".tmrc");
@@ -23,7 +23,7 @@ public class StorageTests
     [Fact(DisplayName = "Storage root override")]
     public void StorageRootOverride()
     {
-        var cfg = ConfigLoader.LoadFromYaml("storage_root: C:/tmp/tmrc-test");
+        var cfg = ConfigLoader.LoadFromIni("storage_root = C:/tmp/tmrc-test");
         Assert.Equal("C:/tmp/tmrc-test", cfg.StorageRoot);
     }
 
@@ -34,7 +34,7 @@ public class StorageTests
         try
         {
             var storage = new StorageManager(tmp);
-            var configPath = Path.Combine(tmp, "config.yaml");
+            var configPath = Path.Combine(tmp, "config.ini");
             storage.EnsureLayout(configPath);
 
             Assert.True(Directory.Exists(tmp));

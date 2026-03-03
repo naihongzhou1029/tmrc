@@ -66,7 +66,7 @@ Think “Rewind-like,” but CLI-only and self-hosted/local-first.
 Implemented so far:
 
 - **Core config**:
-  - YAML-based config loader (`config.yaml`) with defaults and overrides for:
+  - INI-based config loader (`config.ini`) with defaults and overrides for:
     - `sample_rate_ms`, `session`, `capture_mode`, `display`, `audio_enabled`,
       `record_when_locked_or_sleeping`, `storage_root`, `retention_max_age_days`, `retention_max_disk_bytes`,
       `index_mode`,
@@ -113,7 +113,7 @@ Implemented (Windows, export):
 
 Implemented (Windows, indexing/ask):
 
-- **OCR:** When **Tesseract** and FFmpeg are on PATH, the recorder daemon runs OCR on the first frame of each closed MP4 segment and stores text in the index (`ocr_text`). Languages are configurable via `config.yaml` → `ocr_recognition_languages` (BCP 47 / locale, e.g. `en-US`, `zh-Hant`, `zh-Hans`); values are mapped to Tesseract `-l` codes (eng, chi_tra, chi_sim, jpn, kor, or pass-through). Default: `["en-US", "zh-Hant", "zh-Hans"]`. `tmrc ask` matches queries against this text (keyword search). Without Tesseract, segments are still recorded and export works; ask has no text to search.
+- **OCR:** When **Tesseract** and FFmpeg are on PATH, the recorder daemon runs OCR on the first frame of each closed MP4 segment and stores text in the index (`ocr_text`). Languages are configurable via `config.ini` → `ocr_recognition_languages` (BCP 47 / locale, e.g. `en-US`, `zh-Hant`, `zh-Hans`); values are mapped to Tesseract `-l` codes (eng, chi_tra, chi_sim, jpn, kor, or pass-through). Default: `["en-US", "zh-Hant", "zh-Hans"]`. `tmrc ask` matches queries against this text (keyword search). Without Tesseract, segments are still recorded and export works; ask has no text to search.
 - **Reindex:** `tmrc reindex [--force]` re-runs OCR on segments already in the index using the same config languages (improves UX without re-recording; requires Tesseract and FFmpeg).
 
 Not yet implemented (Windows):

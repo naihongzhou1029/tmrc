@@ -110,12 +110,12 @@ public class CliDaemonTests
         var root = Path.Combine(Path.GetTempPath(), "tmrc-cli-" + Guid.NewGuid());
         Directory.CreateDirectory(root);
 
-        var cfg = @"sample_rate_ms: 100
-session: default
-storage_root: {0}
+        var cfg = @"sample_rate_ms = 100
+session = default
+storage_root = {0}
 ";
         File.WriteAllText(
-            Path.Combine(root, "config.yaml"),
+            Path.Combine(root, "config.ini"),
             string.Format(cfg, root.Replace("\\", "/")));
 
         return root;

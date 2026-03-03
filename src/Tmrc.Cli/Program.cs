@@ -86,7 +86,7 @@ public static class Program
     private static TmrcConfig LoadConfig()
     {
         var root = Directory.GetCurrentDirectory();
-        var configPath = Path.Combine(root, "config.yaml");
+        var configPath = Path.Combine(root, "config.ini");
         return ConfigLoader.LoadFromFile(configPath);
     }
 
@@ -720,7 +720,7 @@ public static class Program
     {
         var cfg = LoadConfig();
         var storage = new StorageManager(cfg.StorageRoot);
-        var configPath = Path.Combine(cfg.StorageRoot, "config.yaml");
+        var configPath = Path.Combine(cfg.StorageRoot, "config.ini");
         storage.EnsureLayout(configPath);
         Console.WriteLine($"Installed tmrc storage at {cfg.StorageRoot}");
         return 0;
