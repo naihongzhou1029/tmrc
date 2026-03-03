@@ -110,6 +110,7 @@ Commands:
   dump        Export all recordings to a single MP4 via tmrc export
   wipe        Remove all recordings and index via tmrc wipe
   reindex     Re-run OCR on existing segments (tmrc reindex; optional --force)
+  publish     Build a self-contained single-file exe into ./publish/
   clean       Run dotnet clean for the Windows solution
   help        Show this help message
 
@@ -458,6 +459,23 @@ function Cmd-Reindex {
     Invoke-TmrcCli -CliArgs (@('reindex') + $Args)
 }
 
+function Cmd-Publish {
+    Check-Env -Quiet
+    Assert-DotNetSolution
+    $proj = Join-Path $ProjectRoot 'src\Tmrc.Cli\Tmrc.Cli.csproj'
+    $outDir = Join-Path $ProjectRoot 'publish'
+    Invoke-DotNet -Cmd @(
+        'dotnet', 'publish', $proj,
+        '-r', 'win-x64',
+        '--self-contained', 'true',
+        '-p:PublishSingleFile=true',
+        '-c', 'Release',
+        '-o', $outDir
+    )
+    Write-Ok "Published to: $outDir"
+    Write-Ok "The output exe runs on any Windows x64 machine without .NET installed."
+}
+
 function Cmd-Clean {
     Assert-DotNetSolution
     $sln = Join-Path $ProjectRoot 'src\Tmrc.sln'
@@ -568,6 +586,7 @@ switch ($Command) {
     'dump' { Cmd-Dump; break }
     'wipe' { Cmd-Wipe; break }
     'reindex' { Cmd-Reindex; break }
+    'publish' { Cmd-Publish; break }
     'clean' { Cmd-Clean; break }
     'help' { Show-Usage; break }
     default {
