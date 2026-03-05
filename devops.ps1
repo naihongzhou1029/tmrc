@@ -399,7 +399,7 @@ function Invoke-TmrcCli {
 
     # No implicit build outside the build target: run existing CLI output directly.
     # This also avoids dotnet-run project pipeline and apphost file-lock behavior.
-    $cliDll = Join-Path $ProjectRoot 'src\Tmrc.Cli\bin\Debug\net8.0\Tmrc.Cli.dll'
+    $cliDll = Join-Path $ProjectRoot 'src\Tmrc.Cli\bin\Debug\net8.0-windows\Tmrc.Cli.dll'
     if (-not (Test-Path $cliDll)) {
         Write-Err "CLI build output not found: $cliDll"
         Write-Err "Run ./devops.ps1 build first."

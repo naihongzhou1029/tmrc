@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Tmrc.Core.Config;
@@ -281,6 +282,15 @@ public static class Program
     {
         var cfg = LoadConfig();
         var storage = new StorageManager(cfg.StorageRoot);
+        TryGetRunningDaemon(storage, out _, out var process);
+
+        Console.Write(GetStatusText(cfg, storage, process));
+        return 0;
+    }
+
+    private static string GetStatusText(TmrcConfig cfg, StorageManager storage, Process? process)
+    {
+        var isRecording = process != null;
         var segmentCount = 0;
         try
         {
@@ -291,35 +301,29 @@ public static class Program
                 segmentCount = indexStore.ListAllSegments().Count;
             }
         }
-        catch
-        {
-            // ignore index errors; status should still be available
-        }
+        catch { }
 
-        var isRecording = TryGetRunningDaemon(storage, out var pid, out var process);
-        Console.WriteLine($"Recording: {(isRecording ? "yes" : "no")}");
-        if (isRecording)
+        var sb = new StringBuilder();
+        sb.AppendLine($"Recording: {(isRecording ? "yes" : "no")}");
+        if (isRecording && process != null)
         {
-            Console.WriteLine($"Recorder PID: {pid}");
+            sb.AppendLine($"Recorder PID: {process.Id}");
+            sb.AppendLine($"Recording uptime: {TryGetRecordingUptime(process)}");
         }
-        Console.WriteLine($"Storage root: {storage.StorageRoot}");
-        Console.WriteLine($"Configured sample rate (ms): {cfg.SampleRateMs}");
-        Console.WriteLine($"Configured max segment duration (ms): {cfg.SegmentMaxDurationMs}");
-        Console.WriteLine($"Configured capture diff threshold: {cfg.CaptureDiffThreshold}");
-        Console.WriteLine($"Recorded segments: {segmentCount}");
-        Console.WriteLine($"Recording uptime: {(isRecording && process is not null ? TryGetRecordingUptime(process) : "n/a")}");
+        sb.AppendLine($"Storage root: {storage.StorageRoot}");
+        sb.AppendLine($"Configured sample rate (ms): {cfg.SampleRateMs}");
+        sb.AppendLine($"Configured max segment duration (ms): {cfg.SegmentMaxDurationMs}");
+        sb.AppendLine($"Configured capture diff threshold: {cfg.CaptureDiffThreshold}");
+        sb.AppendLine($"Recorded segments: {segmentCount}");
 
         try
         {
             var usage = storage.DiskUsageAsync().GetAwaiter().GetResult();
-            Console.WriteLine($"Disk usage: {FormatDiskUsage(usage)}");
+            sb.AppendLine($"Disk usage: {FormatDiskUsage(usage)}");
         }
-        catch
-        {
-            // ignore disk usage errors; status still useful
-        }
+        catch { }
 
-        return 0;
+        return sb.ToString();
     }
 
     private static string FormatElapsed(TimeSpan elapsed)
@@ -995,6 +999,17 @@ public static class Program
 
         using var shutdownCts = new CancellationTokenSource();
         var shutdownToken = shutdownCts.Token;
+
+        using var trayIcon = new TrayIconManager(
+            cfg,
+            storage,
+            stopAction: () => shutdownCts.Cancel(),
+            statusProvider: () => GetStatusText(cfg, storage, Process.GetCurrentProcess()));
+
+        var iconPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "app.ico");
+        IconGen.GenerateIconIfMissing(iconPath);
+
+        trayIcon.Start();
 
         // IPC server thread: listens for simple text commands over a named pipe.
         var ipcThread = new Thread(() =>
