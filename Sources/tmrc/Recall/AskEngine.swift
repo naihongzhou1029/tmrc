@@ -22,7 +22,13 @@ public struct AskEngine {
         let (from, to) = resolveRange(since: since, until: until)
         let segments = try index.search(keyword: query, from: from, to: to, session: session)
         if segments.isEmpty {
-            return ("No matches for \"\(query)\" in the given time range.", [])
+            var msg = "No matches for \"\(query)\" in the given time range."
+            if let range = try index.overallTimeRange(session: session) {
+                let formatter = DateFormatter()
+                formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+                msg += " (Total recorded span: \(formatter.string(from: range.start)) to \(formatter.string(from: range.end)))"
+            }
+            return (msg, [])
         }
         let citations = segments.map { seg in
             let formatter = DateFormatter()

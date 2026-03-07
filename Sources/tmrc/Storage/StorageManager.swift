@@ -76,13 +76,13 @@ public struct StorageManager {
 
     /// Recursive size of directory.
     public func totalSize(of directory: String) throws -> Int64 {
-        guard let enumerator = fileManager.enumerator(atPath: directory) else { return 0 }
+        let url = URL(fileURLWithPath: directory)
+        let enumerator = fileManager.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey], options: [.skipsHiddenFiles])
         var total: Int64 = 0
-        while let name = enumerator.nextObject() as? String {
-            let path = (directory as NSString).appendingPathComponent(name)
-            if let attrs = try? fileManager.attributesOfItem(atPath: path),
-               let size = attrs[.size] as? Int64 {
-                total += size
+        while let fileURL = enumerator?.nextObject() as? URL {
+            let resourceValues = try fileURL.resourceValues(forKeys: [.fileSizeKey])
+            if let size = resourceValues.fileSize {
+                total += Int64(size)
             }
         }
         return total

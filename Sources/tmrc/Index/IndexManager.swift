@@ -60,11 +60,15 @@ public struct IndexManager {
 
     /// Check if index has any segments (for empty-index messaging).
     public mutating func isEmpty(session: String) throws -> Bool {
+        try countSegments(session: session) == 0
+    }
+
+    /// Count all segments in the session.
+    public mutating func countSegments(session: String) throws -> Int {
         try connect()
-        let count = try dbQueue?.read { db in
+        return try dbQueue?.read { db in
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM segments WHERE session = ?", arguments: [session]) ?? 0
         } ?? 0
-        return count == 0
     }
 
     /// Fetch a single segment by id and session (for rebuild-index).
@@ -93,13 +97,21 @@ public struct IndexManager {
     public mutating func totalRecordedDuration(session: String) throws -> TimeInterval? {
         try connect()
         return try dbQueue?.read { db in
-            let segments = try IndexSegment
-                .filter(IndexSegment.Columns.session == session)
-                .fetchAll(db)
-            guard !segments.isEmpty else { return nil }
-            return segments.reduce(0) { acc, seg in
-                acc + max(0, seg.endTime.timeIntervalSince(seg.startTime))
-            }
+            // SQLite's julianday() returns days as fractional numbers. Subtract and multiply by seconds/day (86400).
+            let sql = "SELECT SUM(julianday(endTime) - julianday(startTime)) * 86400 FROM segments WHERE session = ?"
+            let result = try Double.fetchOne(db, sql: sql, arguments: [session])
+            guard let val = result, val > 0 else { return nil }
+            return val
+        }
+    }
+
+    /// Overall time range of all recorded segments in the session.
+    public mutating func overallTimeRange(session: String) throws -> (start: Date, end: Date)? {
+        try connect()
+        return try dbQueue?.read { db in
+            let row = try Row.fetchOne(db, sql: "SELECT MIN(startTime), MAX(endTime) FROM segments WHERE session = ?", arguments: [session])
+            guard let row = row, let start: Date = row[0], let end: Date = row[1] else { return nil }
+            return (start, end)
         }
     }
 

@@ -43,6 +43,7 @@ struct AskTests {
         let (answer, segments) = try engine.ask(query: "nonexistentkeyword", since: nil, until: nil)
         #expect(segments.isEmpty)
         #expect(answer.contains("No matches") || answer.contains("no matches"))
+        #expect(answer.contains("Total recorded span"))
     }
 
     @Test("Ask with matches includes citation format YYYY-MM-DD HH:MM:SS")

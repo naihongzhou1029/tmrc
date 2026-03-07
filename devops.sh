@@ -85,14 +85,18 @@ run_swift() {
   return $ret
 }
 
-# Build quietly and run the tmrc binary (no "Building for debugging..." from swift run).
+# Build quietly and run the tmrc binary. Uses the symlink if available to avoid redundant builds.
 run_tmrc() {
-  show_cmd bash -c "cd $(printf '%q' "$PROJECT_ROOT") && swift build -q"
-  (cd "$PROJECT_ROOT" && swift build -q 2> >(grep -v --line-buffered 'swift-driver version' >&2)) || true
-  local bin
-  bin="$(cd "$PROJECT_ROOT" && run_swift swift build --show-bin-path)/tmrc"
+  local bin="$PROJECT_ROOT/tmrc"
+  if [[ ! -x "$bin" ]]; then
+    show_cmd bash -c "cd $(printf '%q' "$PROJECT_ROOT") && swift build -q"
+    (cd "$PROJECT_ROOT" && swift build -q 2> >(grep -v --line-buffered 'swift-driver version' >&2)) || true
+    local bin_path
+    bin_path="$(cd "$PROJECT_ROOT" && swift build --show-bin-path)"
+    bin="$bin_path/tmrc"
+  fi
   show_cmd "$bin" "$@"
-  (cd "$PROJECT_ROOT" && "$bin" "$@")
+  "$bin" "$@"
 }
 
 # Install SwiftLint from GitHub portable binary when Homebrew is unavailable or fails

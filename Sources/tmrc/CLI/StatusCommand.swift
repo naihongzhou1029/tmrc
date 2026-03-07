@@ -41,6 +41,7 @@ public struct StatusCommand: ParsableCommand {
             session = TMRCConfig.defaultSession
         }
         var indexManager = IndexManager(dbPath: storage.indexPath(session: session))
+        let segmentsCount = (try? indexManager.countSegments(session: session)) ?? 0
         let lastRecordingDuration: String? = (try? indexManager.totalRecordedDuration(session: session)).map { secs in
             let total = Int(secs.rounded())
             let days = total / 86400
@@ -54,6 +55,7 @@ public struct StatusCommand: ParsableCommand {
         if let dur = lastRecordingDuration {
             print("Last recording: \(dur)")
         }
+        print("Segments: \(segmentsCount)")
         print("Storage: \(storageRoot)")
         print("Disk usage: \(String(format: "%.1f", usageGB)) GB")
         print("Retention: max age \(retention.maxAgeDays) days, max disk \(maxDiskGB) GB")
