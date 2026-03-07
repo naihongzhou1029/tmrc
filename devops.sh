@@ -271,9 +271,28 @@ cmd_wipe() {
 }
 
 cmd_release() {
-  local version="${1:-}"
+  local version=""
+  local interactive=1
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --no-interactive)
+        interactive=0
+        shift
+        ;;
+      v*)
+        version="$1"
+        shift
+        ;;
+      *)
+        err "Unknown release argument: $1"
+        exit 1
+        ;;
+    esac
+  done
+
   if [[ -z "$version" ]]; then
-    err "Usage: ./devops.sh release <vX.Y.Z>"
+    err "Usage: ./devops.sh release [--no-interactive] <vX.Y.Z>"
     exit 1
   fi
 
@@ -306,7 +325,7 @@ cmd_release() {
   ok "Creating zip archive: $zip_file"
   (cd "${PROJECT_ROOT}/dist" && zip -r "${bundle_name}.zip" "${bundle_name}")
 
-  if has_cmd gh; then
+  if has_cmd gh && [[ "$interactive" -eq 1 ]]; then
     warn "GitHub CLI detected. Would you like to create a release and upload? (y/N)"
     read -r -n 1 reply
     echo
@@ -325,6 +344,8 @@ cmd_release() {
             gh release create "$version" "$zip_file" --title "$version" --notes "Initial release for $os-$arch"
         fi
     fi
+  elif [[ "$interactive" -eq 0 ]]; then
+    ok "Release bundle is ready at: $zip_file (skipped interactive upload)"
   else
     warn "gh (GitHub CLI) not found. Skipping auto-upload."
     ok "Release bundle is ready at: $zip_file"
