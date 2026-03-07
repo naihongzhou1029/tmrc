@@ -32,3 +32,6 @@ Thumbs.db
 # Gemini CLI context
 GEMINI.md
 
+# Distribution bundles
+dist/
+

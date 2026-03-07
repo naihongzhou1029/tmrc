@@ -53,6 +53,7 @@ Commands:
   status      Get recording status (tmrc status)
   dump        Export all recordings to current folder (one MP4)
   wipe        Remove all recordings and index; daemon keeps running
+  release     Build for production and create a zip bundle (with gh upload)
   clean       Clean Swift package artifacts
   help        Show this help message
 
@@ -269,6 +270,67 @@ cmd_wipe() {
   run_tmrc wipe
 }
 
+cmd_release() {
+  local version="${1:-}"
+  if [[ -z "$version" ]]; then
+    err "Usage: ./devops.sh release <vX.Y.Z>"
+    exit 1
+  fi
+
+  run_setup quiet
+  assert_swift_package
+
+  local os
+  os=$(uname -s | tr '[:upper:]' '[:lower:]')
+  local arch
+  arch=$(uname -m)
+  local bundle_name="tmrc-${version}-${os}-${arch}"
+  local dist_dir="${PROJECT_ROOT}/dist/${bundle_name}"
+  local zip_file="${PROJECT_ROOT}/dist/${bundle_name}.zip"
+
+  ok "Building tmrc $version for $os-$arch in release mode..."
+  run_swift swift build -c release
+
+  local bin_path
+  bin_path="$(cd "$PROJECT_ROOT" && swift build -c release --show-bin-path)"
+
+  ok "Preparing distribution bundle in $dist_dir..."
+  rm -rf "$dist_dir" "$zip_file"
+  mkdir -p "$dist_dir"
+
+  cp "$bin_path/tmrc" "$dist_dir/"
+  [[ -f "$PROJECT_ROOT/config.yaml" ]] && cp "$PROJECT_ROOT/config.yaml" "$dist_dir/"
+  [[ -f "$PROJECT_ROOT/README.md" ]] && cp "$PROJECT_ROOT/README.md" "$dist_dir/"
+  cp "$PROJECT_ROOT/devops.sh" "$dist_dir/"
+
+  ok "Creating zip archive: $zip_file"
+  (cd "${PROJECT_ROOT}/dist" && zip -r "${bundle_name}.zip" "${bundle_name}")
+
+  if has_cmd gh; then
+    warn "GitHub CLI detected. Would you like to create a release and upload? (y/N)"
+    read -r -n 1 reply
+    echo
+    if [[ "$reply" =~ ^[Yy]$ ]]; then
+        ok "Checking if tag $version exists..."
+        if ! git rev-parse "$version" >/dev/null 2>&1; then
+            ok "Tagging $version..."
+            git tag -a "$version" -m "Release $version"
+            git push origin "$version"
+        fi
+
+        ok "Creating GitHub release and uploading $zip_file..."
+        if gh release view "$version" >/dev/null 2>&1; then
+            gh release upload "$version" "$zip_file" --clobber
+        else
+            gh release create "$version" "$zip_file" --title "$version" --notes "Initial release for $os-$arch"
+        fi
+    fi
+  else
+    warn "gh (GitHub CLI) not found. Skipping auto-upload."
+    ok "Release bundle is ready at: $zip_file"
+  fi
+}
+
 cmd_clean() {
   assert_swift_package
   run_swift swift package clean
@@ -316,6 +378,9 @@ main() {
       ;;
     wipe)
       cmd_wipe "$@"
+      ;;
+    release)
+      cmd_release "$@"
       ;;
     clean)
       cmd_clean "$@"
