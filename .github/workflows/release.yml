@@ -21,10 +21,7 @@ jobs:
         run: |
           # Extract version from tag
           VERSION=${GITHUB_REF#refs/tags/}
-          # Run release command but skip interactive gh upload
-          ./devops.sh release "$VERSION" <<EOF
-          n
-          EOF
+          ./devops.sh release --no-interactive "$VERSION"
 
       - name: Upload macOS Artifact
         uses: ncipollo/release-action@v1
@@ -52,8 +49,7 @@ jobs:
         shell: pwsh
         run: |
           $version = $env:GITHUB_REF -replace 'refs/tags/', ''
-          # Run release command but skip interactive gh upload
-          echo "n" | ./devops.ps1 release "$version"
+          ./devops.ps1 release "$version" -NoInteractive
 
       - name: Upload Windows Artifact
         uses: ncipollo/release-action@v1
