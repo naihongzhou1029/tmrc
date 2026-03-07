@@ -478,10 +478,13 @@ function Cmd-Publish {
 }
 
 function Cmd-Release {
-    param([string]$Version)
+    param(
+        [string]$Version,
+        [switch]$NoInteractive
+    )
 
     if (-not $Version) {
-        Write-Err "Usage: .\devops.ps1 release <vX.Y.Z>"
+        Write-Err "Usage: .\devops.ps1 release <vX.Y.Z> [-NoInteractive]"
         exit 1
     }
 
@@ -521,7 +524,7 @@ function Cmd-Release {
     Write-Ok "Creating zip archive: $zipFile"
     Compress-Archive -Path "$distDir\*" -DestinationPath $zipFile -Force
 
-    if (Has-Command 'gh') {
+    if (Has-Command 'gh' -and -not $NoInteractive) {
         Write-Host ""
         Write-Host "GitHub CLI detected. Would you like to create a release and upload? (y/N)" -ForegroundColor Yellow
         $reply = Read-Host
@@ -542,6 +545,8 @@ function Cmd-Release {
                 gh release create $Version $zipFile --title $Version --notes "Initial release for $os-$arch"
             }
         }
+    } elseif ($NoInteractive) {
+        Write-Ok "Release bundle is ready at: $zipFile (skipped interactive upload)"
     } else {
         Write-Warn "gh (GitHub CLI) not found. Skipping auto-upload."
         Write-Ok "Release bundle is ready at: $zipFile"
@@ -659,7 +664,16 @@ switch ($Command) {
     'wipe' { Cmd-Wipe; break }
     'reindex' { Cmd-Reindex; break }
     'publish' { Cmd-Publish; break }
-    'release' { Cmd-Release -Version $Args[0]; break }
+    'release' {
+        $v = $null
+        $ni = $false
+        foreach ($a in $Args) {
+            if ($a -ieq "-NoInteractive") { $ni = $true }
+            elseif ($a -match '^v\d+\.\d+\.\d+') { $v = $a }
+        }
+        Cmd-Release -Version $v -NoInteractive:$ni
+        break
+    }
     'clean' { Cmd-Clean; break }
     'help' { Show-Usage; break }
     default {
