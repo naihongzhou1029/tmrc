@@ -150,6 +150,9 @@ Use a single PowerShell script, `devops.ps1`, as the entry point for local devel
 ./devops.ps1 status
 ./devops.ps1 dump
 ./devops.ps1 wipe
+./devops.ps1 reindex
+./devops.ps1 publish
+./devops.ps1 release <vX.Y.Z>
 ./devops.ps1 clean
 ```
 
@@ -176,18 +179,13 @@ Use a single PowerShell script, `devops.ps1`, as the entry point for local devel
   - `status` prints basic info (Recording yes/no, storage root, disk usage).
   - `dump` exports a wide time range to a single MP4 via `tmrc export --from "1000d ago" --to now -o <path>` (requires FFmpeg and MP4 segments).
   - `wipe` clears all recordings under `segments/` in the current storage root.
+- **`reindex`**:
+  - Re-runs OCR on existing segments in the index (requires Tesseract and FFmpeg).
+- **`publish`**:
+  - Builds a self-contained single-file executable into the `publish/` directory.
+- **`release`**:
+  - Builds for production and creates a zip bundle in the `dist/` directory. If GitHub CLI (`gh`) is available, it offers to tag and upload the release.
 - **`clean`**:
   - Runs `dotnet clean` on `src/Tmrc.sln`.
-
----
-
-## Known issues / limitations (Windows)
-
-- **Recording** uses GDI capture and FFmpeg for MP4; optional Windows.Graphics.Capture and Media Foundation are not yet integrated.
-- **Ask** is implemented (keyword search over index). **Export** is implemented (time-range to MP4/GIF or manifest; FFmpeg required for video).
-- **OCR optional (Tesseract)**
-  - OCR runs when Tesseract and FFmpeg are on PATH; otherwise segments have no OCR text. STT and semantic/LLM ask are not yet implemented.
-- **Toast notifications**
-  - Implemented via PowerShell + WinRT when storage is not writable or on disk-full/write error; falls back to stderr if the toast call fails.
 
 For a more detailed, itemized view of implementation vs plan, see `specs/building_progress.md` and `specs/spec.md` / `specs/test.md`.
