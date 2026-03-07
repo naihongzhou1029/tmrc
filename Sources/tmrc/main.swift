@@ -23,11 +23,7 @@ struct TmrcMain {
             var command = try Main.parseAsRoot()
             try command.run()
         } catch {
-            if let exitError = error as? ExitCode {
-                Darwin.exit(Int32(exitError.rawValue))
-            }
-            fputs("\(error)\n", stderr)
-            Darwin.exit(1)
+            Main.exit(withError: error)
         }
     }
 }

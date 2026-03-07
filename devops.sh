@@ -46,9 +46,8 @@ Usage:
 
 Commands:
   setup       Validate local development prerequisites
-  check-env   Alias of setup
   build       Run swift build
-  test        Run swift test
+  test        Run full self-validating test suite (includes swift tests)
   lint        Run SwiftLint (if installed)
   record      Toggle recording (start if stopped, stop if running)
   status      Get recording status (tmrc status)
@@ -81,7 +80,7 @@ run_swift() {
   stderr_file=$(mktemp)
   "$@" 2>"$stderr_file"
   local ret=$?
-  grep -v 'swift-driver version' "$stderr_file" >&2
+  grep -v 'swift-driver version' "$stderr_file" >&2 || true
   rm -f "$stderr_file"
   return $ret
 }
@@ -212,9 +211,13 @@ cmd_build() {
   run_setup quiet
   assert_swift_package
   run_swift swift build
+  local bin_path
+  bin_path="$(cd "$PROJECT_ROOT" && swift build --show-bin-path)"
+  ln -sf "$bin_path/tmrc" "$PROJECT_ROOT/tmrc"
+  ok "Symlink $PROJECT_ROOT/tmrc -> $bin_path/tmrc"
 }
 
-cmd_test() {
+cmd_swift_test() {
   run_setup quiet
   assert_swift_package
   run_swift swift test
@@ -265,7 +268,12 @@ cmd_wipe() {
 cmd_clean() {
   assert_swift_package
   run_swift swift package clean
-  ok "Swift package artifacts cleaned."
+  rm -f "$PROJECT_ROOT/tmrc"
+  ok "Swift package artifacts and symlink cleaned."
+}
+
+cmd_test() {
+  ./scripts/smoke_test.sh
 }
 
 main() {
@@ -278,7 +286,7 @@ main() {
   shift
 
   case "$command" in
-    setup|check-env)
+    setup)
       run_setup
       ;;
     build)
@@ -286,6 +294,9 @@ main() {
       ;;
     test)
       cmd_test "$@"
+      ;;
+    swift-test)
+      cmd_swift_test "$@"
       ;;
     lint)
       cmd_lint "$@"

@@ -4,6 +4,9 @@
 .build/
 .swiftpm/
 
+# devops.sh: symlink to built executable (./devops.sh build)
+/tmrc
+
 # devops.sh auto-installed tools (e.g. SwiftLint portable)
 .bin/
 
@@ -25,3 +28,7 @@ xcuserdata/
 .AppleDouble
 .LSOverride
 Thumbs.db
+
+# Gemini CLI context
+GEMINI.md
+
