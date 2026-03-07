@@ -1,0 +1,65 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout macOS branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Build macOS Release Bundle
+        run: |
+          # Extract version from tag
+          VERSION=${GITHUB_REF#refs/tags/}
+          # Run release command but skip interactive gh upload
+          ./devops.sh release "$VERSION" <<EOF
+          n
+          EOF
+
+      - name: Upload macOS Artifact
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "dist/*.zip"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          allowUpdates: true
+          omitBodyDuringUpdate: true
+          omitNameDuringUpdate: true
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Windows branch
+        uses: actions/checkout@v4
+        with:
+          ref: windows
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.x
+
+      - name: Build Windows Release Bundle
+        shell: pwsh
+        run: |
+          $version = $env:GITHUB_REF -replace 'refs/tags/', ''
+          # Run release command but skip interactive gh upload
+          echo "n" | ./devops.ps1 release "$version"
+
+      - name: Upload Windows Artifact
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "dist/*.zip"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          allowUpdates: true
+          omitBodyDuringUpdate: true
+          omitNameDuringUpdate: true
