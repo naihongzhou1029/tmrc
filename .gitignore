@@ -37,3 +37,6 @@ publish/
 .AppleDouble
 .LSOverride
 Thumbs.db
+
+# Distribution bundles
+dist/

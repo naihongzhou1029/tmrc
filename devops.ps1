@@ -111,6 +111,7 @@ Commands:
   wipe        Remove all recordings and index via tmrc wipe
   reindex     Re-run OCR on existing segments (tmrc reindex; optional --force)
   publish     Build a self-contained single-file exe into ./publish/
+  release     Build for production and create a zip bundle (with gh upload)
   clean       Run dotnet clean for the Windows solution
   help        Show this help message
 
@@ -476,6 +477,77 @@ function Cmd-Publish {
     Write-Ok "The output exe runs on any Windows x64 machine without .NET installed."
 }
 
+function Cmd-Release {
+    param([string]$Version)
+
+    if (-not $Version) {
+        Write-Err "Usage: .\devops.ps1 release <vX.Y.Z>"
+        exit 1
+    }
+
+    Check-Env -Quiet
+    Assert-DotNetSolution
+
+    $os = "windows"
+    $arch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "arm64" } else { "x64" }
+    $bundleName = "tmrc-$Version-$os-$arch"
+    $distDir = Join-Path $ProjectRoot "dist\$bundleName"
+    $zipFile = Join-Path $ProjectRoot "dist\$bundleName.zip"
+
+    Write-Ok "Building tmrc $Version for $os-$arch in release mode..."
+    $proj = Join-Path $ProjectRoot 'src\Tmrc.Cli\Tmrc.Cli.csproj'
+    $runtime = if ($arch -eq "arm64") { "win-arm64" } else { "win-x64" }
+
+    Invoke-DotNet -Cmd @(
+        'dotnet', 'publish', $proj,
+        '-r', $runtime,
+        '--self-contained', 'true',
+        '-p:PublishSingleFile=true',
+        '-c', 'Release',
+        '-o', $distDir
+    )
+
+    Write-Ok "Preparing distribution bundle in $distDir..."
+    if (Test-Path $zipFile) { Remove-Item $zipFile }
+
+    $configPath = Join-Path $ProjectRoot "config.yaml"
+    if (Test-Path $configPath) { Copy-Item $configPath $distDir }
+
+    $readmePath = Join-Path $ProjectRoot "README.md"
+    if (Test-Path $readmePath) { Copy-Item $readmePath $distDir }
+
+    Copy-Item (Join-Path $ProjectRoot "devops.ps1") $distDir
+
+    Write-Ok "Creating zip archive: $zipFile"
+    Compress-Archive -Path "$distDir\*" -DestinationPath $zipFile -Force
+
+    if (Has-Command 'gh') {
+        Write-Host ""
+        Write-Host "GitHub CLI detected. Would you like to create a release and upload? (y/N)" -ForegroundColor Yellow
+        $reply = Read-Host
+        if ($reply -and $reply.Trim().ToLower() -eq 'y') {
+            Write-Ok "Checking if tag $Version exists..."
+            $tagCheck = git rev-parse $Version 2>$null
+            if ($LASTEXITCODE -ne 0) {
+                Write-Ok "Tagging $Version..."
+                git tag -a $Version -m "Release $Version"
+                git push origin $Version
+            }
+
+            Write-Ok "Creating/Updating GitHub release and uploading $zipFile..."
+            $releaseCheck = gh release view $Version 2>$null
+            if ($LASTEXITCODE -eq 0) {
+                gh release upload $Version "$zipFile#tmrc-$Version-$os-$arch.zip" --clobber
+            } else {
+                gh release create $Version $zipFile --title $Version --notes "Initial release for $os-$arch"
+            }
+        }
+    } else {
+        Write-Warn "gh (GitHub CLI) not found. Skipping auto-upload."
+        Write-Ok "Release bundle is ready at: $zipFile"
+    }
+}
+
 function Cmd-Clean {
     Assert-DotNetSolution
     $sln = Join-Path $ProjectRoot 'src\Tmrc.sln'
@@ -587,6 +659,7 @@ switch ($Command) {
     'wipe' { Cmd-Wipe; break }
     'reindex' { Cmd-Reindex; break }
     'publish' { Cmd-Publish; break }
+    'release' { Cmd-Release -Version $Args[0]; break }
     'clean' { Cmd-Clean; break }
     'help' { Show-Usage; break }
     default {
