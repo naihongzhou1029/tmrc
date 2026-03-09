@@ -1060,6 +1060,7 @@ public static class Program
         };
 
         logger.Info("tmrc daemon starting.");
+        notifier.Toast("Time Machine", "Time Machine is online");
         ipcThread.Start();
 
         void EmitFlushedSegments(IList<EventSegmenter.Segment> segmentsToWrite, int frameWidth, int frameHeight)

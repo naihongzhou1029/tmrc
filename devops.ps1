@@ -395,6 +395,21 @@ function Check-Env {
         }
     }
 
+    # Check that the net8.0 runtime is actually installed (SDK ≠ runtime).
+    $requiredRuntime = '8.'
+    $runtimes = & dotnet --list-runtimes 2>&1 | Out-String
+    $hasNet8Runtime = $runtimes -match "Microsoft\.NETCore\.App $requiredRuntime"
+    if ($hasNet8Runtime) {
+        Write-Ok ".NET 8 runtime present (required by project targets)"
+    } else {
+        Write-Err ".NET 8 runtime not found. Installed runtimes:"
+        $runtimes -split "`n" | Where-Object { $_.Trim() } | ForEach-Object { Write-Host "  $_" }
+        Write-Host ""
+        Write-Host "The project targets net8.0 but the SDK alone is not enough - the runtime must also be installed." -ForegroundColor Yellow
+        Write-Host "Install .NET 8 runtime from: https://dotnet.microsoft.com/download/dotnet/8.0" -ForegroundColor Cyan
+        $failures++
+    }
+
     if (Test-Path (Join-Path $ProjectRoot 'config.ini')) {
         Write-Ok "config.ini found at project root"
     } else {
