@@ -919,7 +919,7 @@ public static class Program
 
         if (!storage.TryProbeWritable(out var writableError))
         {
-            notifier.Toast("tmrc", "Storage not writable: " + (writableError ?? "unknown"));
+            notifier.Toast("Time Machine", "Storage not writable: " + (writableError ?? "unknown"));
             Console.Error.WriteLine($"Storage not writable: {writableError}");
             return 1;
         }
@@ -1123,7 +1123,7 @@ public static class Program
                     logger.Error($"Failed to write segment {id}: {ex.Message}");
                     if (ex is IOException || ex.InnerException is IOException)
                     {
-                        notifier.Toast("tmrc", "Disk full or write error; stopping recording.");
+                        notifier.Toast("Time Machine", "Disk full or write error; stopping recording.");
                         shutdownCts.Cancel();
                     }
                 }
