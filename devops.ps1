@@ -39,6 +39,42 @@ function Has-Command {
     return [bool](Get-Command $Name -ErrorAction SilentlyContinue)
 }
 
+# Returns .NET SDK version string, or $null if dotnet cannot be run (e.g. not installed or failed to load).
+# When dotnet exists but fails, writes a descriptive message so the user knows what to do.
+function Get-DotNetVersionOrNull {
+    if (-not (Has-Command 'dotnet')) {
+        return $null
+    }
+    try {
+        $ver = & dotnet --version 2>&1 | Out-String
+        $ver = ($ver -replace '\s+', ' ').Trim()
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($ver)) {
+            Write-DotNetFailureMessage
+            return $null
+        }
+        return $ver
+    } catch {
+        Write-DotNetFailureMessage
+        return $null
+    }
+}
+
+function Write-DotNetFailureMessage {
+    if ($env:DEVOPS_QUIET) { return }
+    Write-Err ".NET SDK check failed: the 'dotnet' command could not be run."
+    Write-Host ""
+    Write-Host "This usually means:" -ForegroundColor Yellow
+    Write-Host "  - .NET SDK is not installed, or the installation is broken."
+    Write-Host "  - You are using 32-bit PowerShell while .NET is 64-bit (or the opposite)."
+    Write-Host "  - PATH points to a leftover or invalid dotnet executable."
+    Write-Host ""
+    Write-Host "What to do:" -ForegroundColor Cyan
+    Write-Host "  1. Install or repair .NET SDK 8+ from: https://dotnet.microsoft.com/download"
+    Write-Host "  2. If already installed, open a new PowerShell window (match architecture, e.g. use 64-bit)."
+    Write-Host "  3. Run 'dotnet --version' in that terminal; if it still fails, reinstall the SDK."
+    Write-Host ""
+}
+
 function Confirm-Install {
     param(
         [string]$ToolName,
@@ -339,22 +375,30 @@ function Check-Env {
     Write-Ok "Operating system: Windows"
 
     if (Has-Command 'dotnet') {
-        $ver = (dotnet --version 2>$null)
-        Write-Ok ".NET SDK: $ver"
+        $ver = Get-DotNetVersionOrNull
+        if ($ver) {
+            Write-Ok ".NET SDK: $ver"
+        } else {
+            $failures++
+        }
     } else {
         Install-DotNetSdk
         if (-not (Has-Command 'dotnet')) {
             $failures++
         } else {
-            $ver = (dotnet --version 2>$null)
-            Write-Ok ".NET SDK: $ver"
+            $ver = Get-DotNetVersionOrNull
+            if ($ver) {
+                Write-Ok ".NET SDK: $ver"
+            } else {
+                $failures++
+            }
         }
     }
 
-    if (Test-Path (Join-Path $ProjectRoot 'config.yaml')) {
-        Write-Ok "config.yaml found at project root"
+    if (Test-Path (Join-Path $ProjectRoot 'config.ini')) {
+        Write-Ok "config.ini found at project root"
     } else {
-        Write-Warn "config.yaml not found at project root"
+        Write-Warn "config.ini not found at project root"
     }
 
     Ensure-OptionalFfmpeg

@@ -24,6 +24,7 @@ xcuserdata/
 
 # Claude Code
 CLAUDE.md
+.claude/
 
 # .NET
 bin/
