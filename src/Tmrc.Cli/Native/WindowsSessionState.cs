@@ -5,7 +5,6 @@ namespace Tmrc.Cli.Native;
 internal static class WindowsSessionState
 {
     private const uint DESKTOP_READOBJECTS = 0x0001;
-    private const uint DESKTOP_SWITCHDESKTOP = 0x0100;
     private const int UOI_NAME = 2;
     private static readonly nint WTS_CURRENT_SERVER_HANDLE = nint.Zero;
 
@@ -22,17 +21,22 @@ internal static class WindowsSessionState
             return forcedInteractive;
         }
 
-        // Fail closed: when we cannot verify interactivity, treat as non-interactive
-        // to satisfy "do not record while locked/logged out" by default.
-        if (!TryIsCurrentSessionActive(out var isSessionActive) || !isSessionActive)
+        // Only return false early when WTS *confirms* the session is not active.
+        // If the WTS API call itself fails (e.g. service unavailable on IoT/embedded editions),
+        // fall through to the desktop name check rather than failing closed.
+        if (TryIsCurrentSessionActive(out var isSessionActive) && !isSessionActive)
         {
             return false;
         }
 
-        var desktop = OpenInputDesktop(0, false, DESKTOP_READOBJECTS | DESKTOP_SWITCHDESKTOP);
+        var desktop = OpenInputDesktop(0, false, DESKTOP_READOBJECTS);
         if (desktop == 0)
         {
-            return false;
+            // Cannot open input desktop from this process context (common for background
+            // daemon processes). We have already handled the confirmed-non-active case above,
+            // so at this point either WTS says active or the WTS query itself failed.
+            // Either way, assume interactive rather than silently suppressing recording.
+            return true;
         }
 
         try
@@ -122,7 +126,11 @@ internal static class WindowsSessionState
     private static bool TryGetDesktopName(nint desktop, out string? name)
     {
         name = null;
-        if (!GetUserObjectInformation(desktop, UOI_NAME, nint.Zero, 0, out var bytesNeeded) || bytesNeeded <= 0)
+        // GetUserObjectInformation with a zero-size buffer always returns FALSE on Windows;
+        // it communicates the required buffer size via bytesNeeded (ERROR_INSUFFICIENT_BUFFER).
+        // Do not check the return value here — only validate that bytesNeeded was populated.
+        GetUserObjectInformation(desktop, UOI_NAME, nint.Zero, 0, out var bytesNeeded);
+        if (bytesNeeded <= 0)
         {
             return false;
         }
