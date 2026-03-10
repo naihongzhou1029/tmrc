@@ -94,7 +94,11 @@ Implemented so far:
 - **Support**:
   - Simple file logger (`tmrc.log`) with log levels (debug, info, warn, error).
   - **Debug mode:** `tmrc --debug <command>` or `TMRC_DEBUG=1` enables verbose logging: daemon uses Debug log level and emits frame/segment activity. Useful for support and troubleshooting.
-  - Stub notifier that logs “toast” messages to stderr (Windows toast integration TBD).
+  - Windows toast notifications via WinRT on recording start/stop events.
+  - **System tray icon**: when the daemon is recording, a tray icon appears in the notification area with a right-click context menu providing:
+    - **Status** — shows current recording info (PID, uptime, segment count, disk usage) in a dialog.
+    - **Open Storage Folder** — opens `storage_root` in Explorer.
+    - **Stop Recording** — gracefully shuts down the daemon.
 - **Test suite**:
   - .NET xUnit suite in `src/test_suite/Tmrc.Tests` covering:
     - Config defaults/overrides and validation.

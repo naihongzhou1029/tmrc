@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using Tmrc.Core.Config;
 using Tmrc.Core.Storage;
@@ -32,6 +33,9 @@ public sealed class TrayIconManager : IDisposable
     {
         _messageLoopThread = new Thread(() =>
         {
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+
             var iconPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "app.ico");
 
             if (File.Exists(iconPath))
@@ -62,6 +66,12 @@ public sealed class TrayIconManager : IDisposable
             _icon.ContextMenuStrip = menu;
             _icon.DoubleClick += (s, e) => ShowStatus();
 
+            Application.ApplicationExit += (s, e) =>
+            {
+                _icon.Visible = false;
+                _icon.Dispose();
+            };
+
             Application.Run();
         });
 
@@ -72,7 +82,18 @@ public sealed class TrayIconManager : IDisposable
 
     private void ShowStatus()
     {
-        MessageBox.Show(_statusProvider(), "tmrc Status", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        Task.Run(() =>
+        {
+            try
+            {
+                var text = _statusProvider();
+                MessageBox.Show(text, "tmrc Status", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error fetching status:\n{ex.Message}", "tmrc Status", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        });
     }
 
     private void OpenStorage()
@@ -91,13 +112,6 @@ public sealed class TrayIconManager : IDisposable
 
     public void Dispose()
     {
-        if (_icon.Visible)
-        {
-            _icon.Visible = false;
-        }
-
         Application.Exit();
-
-        _icon.Dispose();
     }
 }
