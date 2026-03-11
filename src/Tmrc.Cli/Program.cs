@@ -60,6 +60,8 @@ public static class Program
                 return Install(tail);
             case "uninstall":
                 return Uninstall(tail);
+            case "stop":
+                return StopRecording();
             case "wipe":
                 return Wipe(tail);
             case "reindex":
@@ -135,13 +137,13 @@ public static class Program
 
     private static int Record(string[] args)
     {
-        // record           -> toggle
+        // record           -> start (no-op with notice if already recording)
         // record --start   -> start
         // record --stop    -> stop
         // record --status  -> status
         if (args.Length == 0)
         {
-            return ToggleRecording();
+            return StartRecording();
         }
 
         var sub = args[0];
@@ -174,9 +176,10 @@ public static class Program
 
         if (TryGetRunningDaemon(storage, out var existingPid, out _))
         {
-            Console.Error.WriteLine(
-                $"Recording is already in progress (PID {existingPid}).");
-            return 1;
+            var msg = $"Time Machine is already recording (PID {existingPid}).";
+            Console.WriteLine(msg);
+            new WindowsToastNotifier().Toast("Time Machine", msg);
+            return 0;
         }
 
         Directory.CreateDirectory(Path.GetDirectoryName(storage.PidFilePath)!);
@@ -235,9 +238,10 @@ public static class Program
         var storage = CreateStorageManager();
         if (!TryGetRunningDaemon(storage, out var pid, out var proc))
         {
-            Console.Error.WriteLine("Recording is not currently running.");
-            // Treat as non-fatal; exit code 1 signals "nothing to stop".
-            return 1;
+            var msg = "Time Machine is not currently recording.";
+            Console.WriteLine(msg);
+            new WindowsToastNotifier().Toast("Time Machine", msg);
+            return 0;
         }
 
         try
@@ -720,6 +724,60 @@ public static class Program
         return 0;
     }
 
+    private static readonly string StartupShortcutPath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.Startup), "tmrc.lnk");
+
+    private static bool TryCreateStartupShortcut()
+    {
+        var assemblyPath = typeof(Program).Assembly.Location;
+        string target, arguments;
+        if (Path.GetExtension(assemblyPath).Equals(".dll", StringComparison.OrdinalIgnoreCase))
+        {
+            target = "dotnet";
+            arguments = $"\"{assemblyPath}\" record";
+        }
+        else
+        {
+            target = assemblyPath;
+            arguments = "record";
+        }
+
+        var lnk = StartupShortcutPath.Replace("'", "''");
+        var tgt = target.Replace("'", "''");
+        var args2 = arguments.Replace("'", "''");
+        var script = $"""
+            $ws = New-Object -ComObject WScript.Shell
+            $s = $ws.CreateShortcut('{lnk}')
+            $s.TargetPath = '{tgt}'
+            $s.Arguments = '{args2}'
+            $s.Description = 'Time Machine auto-start recording'
+            $s.Save()
+            """;
+
+        var tmp = Path.Combine(Path.GetTempPath(), $"tmrc-startup-{Guid.NewGuid():N}.ps1");
+        try
+        {
+            File.WriteAllText(tmp, script);
+            using var proc = Process.Start(new ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                Arguments = $"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"{tmp}\"",
+                UseShellExecute = false,
+                CreateNoWindow = true
+            });
+            proc?.WaitForExit(5000);
+            return proc?.ExitCode == 0;
+        }
+        catch { return false; }
+        finally { try { File.Delete(tmp); } catch { } }
+    }
+
+    private static void TryRemoveStartupShortcut()
+    {
+        try { if (File.Exists(StartupShortcutPath)) File.Delete(StartupShortcutPath); }
+        catch { }
+    }
+
     private static int Install(string[] args)
     {
         var cfg = LoadConfig();
@@ -727,6 +785,12 @@ public static class Program
         var configPath = Path.Combine(cfg.StorageRoot, "config.ini");
         storage.EnsureLayout(configPath);
         Console.WriteLine($"Installed tmrc storage at {cfg.StorageRoot}");
+
+        if (TryCreateStartupShortcut())
+            Console.WriteLine($"Added startup shortcut: {StartupShortcutPath}");
+        else
+            Console.Error.WriteLine("Warning: could not create startup shortcut in the Windows startup folder.");
+
         return 0;
     }
 
@@ -783,6 +847,12 @@ public static class Program
         else if (Directory.Exists(cfg.StorageRoot))
         {
             Console.WriteLine($"tmrc data present at {cfg.StorageRoot}. Use --remove-data to delete it.");
+        }
+
+        if (File.Exists(StartupShortcutPath))
+        {
+            TryRemoveStartupShortcut();
+            Console.WriteLine($"Removed startup shortcut: {StartupShortcutPath}");
         }
 
         return 0;

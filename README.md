@@ -38,7 +38,8 @@ Think “Rewind-like,” but CLI-only and self-hosted/local-first.
    - Enables search by time range or by natural-language query.
 
 3. **CLI**
-   - `tmrc record` — Start/stop or configure recording (or “ensure daemon is running”).
+   - `tmrc record` — Start recording (no-op with notice if already recording).
+  - `tmrc stop` — Stop recording (no-op with notice if not recording).
    - `tmrc ask "..."` — Natural-language question → text answer (and optionally time references for export).
    - `tmrc export` — Export a time range or query-matched segment to **MP4** or **GIF** (e.g. `--from`, `--to`, `--format`, `-o`).
 
@@ -85,8 +86,9 @@ Implemented so far:
   - Absolute: `"YYYY-MM-DD HH:mm:ss"` in local time.
   - Relative helpers: `"now"`, `"1h ago"` (and other units), `"yesterday"`.
 - **CLI (Windows)**:
-  - `tmrc install` – create storage layout and default config if missing.
-  - `tmrc uninstall [--remove-data]` – stop the daemon if running; with `--remove-data`, delete the storage root.
+  - `tmrc install` – create storage layout and default config if missing; adds a `.lnk` shortcut to the Windows startup folder so recording starts automatically on login.
+  - `tmrc uninstall [--remove-data]` – stop the daemon if running, remove the startup shortcut; with `--remove-data`, also delete the storage root.
+  - `tmrc stop` – stop the recorder daemon; prints a notice (stdout + toast) if recording is not currently active.
   - `tmrc status` – prints basic status (Recording yes/no, storage root, disk usage).
   - `tmrc wipe` – clears `segments/` under the configured storage root.
   - `tmrc reindex [--force]` – re-runs OCR on existing MP4 segments in the index (Tesseract + FFmpeg required). By default only segments with no OCR text are processed; `--force` re-indexes all.
@@ -150,7 +152,10 @@ Use a single PowerShell script, `devops.ps1`, as the entry point for local devel
 ./devops.ps1 test
 ./devops.ps1 lint
 ./devops.ps1 clear-tests
+./devops.ps1 install
+./devops.ps1 uninstall
 ./devops.ps1 record
+./devops.ps1 stop
 ./devops.ps1 status
 ./devops.ps1 dump
 ./devops.ps1 wipe
@@ -177,9 +182,13 @@ Use a single PowerShell script, `devops.ps1`, as the entry point for local devel
 - **`clear-tests`**:
   - Clears all values in the **Pass** column of `specs/test.md`.
   - Keeps all other test table content unchanged (`Actual Result`, action steps, expected results, etc.).
-- **`record` / `status` / `dump` / `wipe`**:
+- **`install` / `uninstall`**:
+  - `install` sets up the storage layout and adds a startup shortcut (`tmrc.lnk`) to the Windows startup folder so recording begins automatically on login.
+  - `uninstall` stops the daemon if running, removes the startup shortcut, and (with `--remove-data`) deletes the storage root.
+- **`record` / `stop` / `status` / `dump` / `wipe`**:
   - Call into the Windows CLI (`Tmrc.Cli`) via `dotnet run`.
-  - `record` starts the recorder daemon (or reports already in progress).
+  - `record` starts the recorder daemon; prints a notice (stdout + toast) if already recording.
+  - `stop` stops the recorder daemon; prints a notice (stdout + toast) if not currently recording.
   - `status` prints basic info (Recording yes/no, storage root, disk usage).
   - `dump` exports a wide time range to a single MP4 via `tmrc export --from "1000d ago" --to now -o <path>` (requires FFmpeg and MP4 segments).
   - `wipe` clears all recordings under `segments/` in the current storage root.

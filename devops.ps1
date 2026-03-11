@@ -141,7 +141,10 @@ Commands:
   test        Run dotnet test for the Windows solution
   lint        Run dotnet format (if installed)
   clear-tests Clear all values in Pass column of specs/test.md
-  record      Run tmrc record (Windows CLI)
+  install     Set up tmrc storage and add startup shortcut
+  uninstall   Stop daemon, remove startup shortcut (add --remove-data to also delete recordings)
+  record      Start recording (no-op with notice if already recording)
+  stop        Stop recording (no-op with notice if not recording)
   status      Run tmrc status (Windows CLI)
   dump        Export all recordings to a single MP4 via tmrc export
   wipe        Remove all recordings and index via tmrc wipe
@@ -496,8 +499,20 @@ function Cmd-Lint {
     }
 }
 
+function Cmd-Install {
+    Invoke-TmrcCli -CliArgs @('install')
+}
+
+function Cmd-Uninstall {
+    Invoke-TmrcCli -CliArgs (@('uninstall') + $Args)
+}
+
 function Cmd-Record {
     Invoke-TmrcCli -CliArgs @('record')
+}
+
+function Cmd-Stop {
+    Invoke-TmrcCli -CliArgs @('stop')
 }
 
 function Cmd-Status {
@@ -700,7 +715,10 @@ switch ($Command) {
     'test' { Cmd-Test; break }
     'lint' { Cmd-Lint; break }
     'clear-tests' { Cmd-ClearTests; break }
+    'install'   { Cmd-Install; break }
+    'uninstall' { Cmd-Uninstall; break }
     'record' { Cmd-Record; break }
+    'stop'   { Cmd-Stop; break }
     'status' { Cmd-Status; break }
     'dump' { Cmd-Dump; break }
     'wipe' { Cmd-Wipe; break }
