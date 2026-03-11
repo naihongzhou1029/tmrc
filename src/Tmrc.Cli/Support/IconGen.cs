@@ -43,11 +43,13 @@ public static class IconGen
         g.FillPolygon(Brushes.White, triangle);
 
         // Save as Icon
-        try {
+        try
+        {
             var iconHandle = bitmap.GetHicon();
             using var icon = Icon.FromHandle(iconHandle);
             using var fs = new FileStream(path, FileMode.Create);
             icon.Save(fs);
-        } catch { }
+        }
+        catch { }
     }
 }

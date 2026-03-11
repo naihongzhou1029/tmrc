@@ -716,14 +716,13 @@ switch ($Command) {
     'lint' { Cmd-Lint; break }
     'clear-tests' { Cmd-ClearTests; break }
     'install'   { Cmd-Install; break }
-    'uninstall' { Cmd-Uninstall; break }
+    'uninstall' { Cmd-Uninstall @Args; break }
     'record' { Cmd-Record; break }
     'stop'   { Cmd-Stop; break }
     'status' { Cmd-Status; break }
     'dump' { Cmd-Dump; break }
     'wipe' { Cmd-Wipe; break }
-    'reindex' { Cmd-Reindex; break }
-    'publish' { Cmd-Publish; break }
+    'reindex' { Cmd-Reindex @Args; break }
     'release' {
         $v = $null
         $ni = $false
