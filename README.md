@@ -61,7 +61,7 @@ Think “Rewind-like,” but CLI-only and self-hosted/local-first.
 
 ## Status
 
-In progress. Implemented: CLI (record start/stop/status, install, uninstall, status, ask, export, rebuild-index), config (YAML + defaults), storage layout and retention, daemon process (start/stop; capture loop with ScreenCaptureKit), SQLite index schema and keyword search, time-range parser, ask engine (empty index, no-matches, citations), **export (stitch MP4/GIF, --from/--to/--query, missing-segment error, quality presets)**. Recording pipeline: ScreenCaptureKit capture (main/combined display), event-based segmenter, segment writer (AVAssetWriter H.264 MP4), segment index upsert and retention eviction; **OCR (Vision) per segment after write**; **permission-revoked detection and toast**; **low-disk check and toast**; **crash recovery (remove incomplete segments on start)**. Log file (single file, 7-day rotation), debug/version in logs. Pending: audio capture, window/app capture mode, optional Unix socket IPC.
+In progress. Implemented: CLI (record start/stop, status, install, uninstall, ask, export, rebuild-index), config (YAML + defaults), storage layout and retention, daemon process (start/stop; capture loop with ScreenCaptureKit), SQLite index schema and keyword search, time-range parser, ask engine (empty index, no-matches, citations), **export (stitch MP4/GIF, --from/--to/--query, missing-segment error, quality presets)**. Recording pipeline: ScreenCaptureKit capture (main/combined display), event-based segmenter, segment writer (AVAssetWriter H.264 MP4), segment index upsert and retention eviction; **OCR (Vision) per segment after write**; **permission-revoked detection and toast**; **low-disk check and toast**; **crash recovery (remove incomplete segments on start)**. Log file (single file, 7-day rotation), debug/version in logs. Pending: audio capture, window/app capture mode, optional Unix socket IPC.
 
 ---
 
@@ -87,6 +87,7 @@ Use a single script, `devops.sh`, as the entry point for local development opera
 ./devops.sh install
 ./devops.sh uninstall
 ./devops.sh record
+./devops.sh stop
 ./devops.sh status
 ./devops.sh dump
 ./devops.sh wipe
@@ -102,7 +103,8 @@ Use a single script, `devops.sh`, as the entry point for local development opera
 - `lint`: runs `swiftlint` when installed. Runs setup checks silently first.
 - `install`: builds the project, initializes storage/config, and sets up a macOS Launch Agent to automatically start recording on login.
 - `uninstall`: removes the Launch Agent and stops the recording daemon.
-- `record`: toggles recording (start if stopped, stop if running). Uses the built `tmrc` binary; no setup output or build log.
+- `record`: starts recording (if not already running). Uses the built `tmrc` binary; no setup output or build log.
+- `stop`: stops recording (if running). Uses the built binary; no setup output or build log.
 - `status`: prints recording status, storage path, disk usage, and retention policy. Uses the built binary; no setup output or build log.
 - `dump`: exports all recordings to a single timestamped MP4 in the project root (`tmrc_dump_YYYY-MM-DD_HH-MM-SS.mp4`). Uses the built binary; no setup output or build log.
 - `wipe`: removes all segment files and clears the index; the daemon (if running) keeps running. Uses the built binary; no setup output or build log.

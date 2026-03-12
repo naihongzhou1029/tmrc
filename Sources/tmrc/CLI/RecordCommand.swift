@@ -64,9 +64,8 @@ public struct RecordCommand: ParsableCommand {
             print("Recording started (session: \(sessionName)).")
             Logger.shared.log("Recording start requested (session=\(sessionName))", level: .info, category: "cli")
         } catch DaemonError.alreadyRunning {
-            fputs("Recording is already in progress.\n", stderr)
-            Logger.shared.log("Recording start requested but daemon already running", level: .warn, category: "cli")
-            Darwin.exit(1)
+            print("Daemon is already recording (session: \(sessionName)).")
+            Logger.shared.log("Recording start requested but daemon already running", level: .info, category: "cli")
         } catch {
             fputs("Failed to start recording: \(error.localizedDescription)\n", stderr)
             Logger.shared.log("Failed to start recording: \(error.localizedDescription)", level: .error, category: "cli")
@@ -83,6 +82,10 @@ public struct RecordCommand: ParsableCommand {
             storageRoot = ("~/.tmrc/" as NSString).expandingTildeInPath
         }
         let daemon = DaemonManager(storageManager: StorageManager(storageRoot: storageRoot))
+        if !daemon.isRunning() {
+            print("No daemon is currently recording.")
+            return
+        }
         try daemon.stopIfRunning()
         print("Recording stopped.")
     }

@@ -51,7 +51,8 @@ Commands:
   lint        Run SwiftLint (if installed)
   install     Build, install CLI config, and set to start on login
   uninstall   Remove login item and stop recording
-  record      Toggle recording (start if stopped, stop if running)
+  record      Start recording (if not already running)
+  stop        Stop recording (if running)
   status      Get recording status (tmrc status)
   dump        Export all recordings to current folder (one MP4)
   wipe        Remove all recordings and index; daemon keeps running
@@ -63,6 +64,7 @@ Examples:
   ./devops.sh setup
   ./devops.sh build
   ./devops.sh record
+  ./devops.sh stop
   ./devops.sh dump
   ./devops.sh wipe
 EOF
@@ -290,13 +292,13 @@ cmd_lint() {
 cmd_record() {
   run_setup quiet
   assert_swift_package
-  local status_out
-  status_out=$(run_tmrc status 2>/dev/null) || true
-  if echo "$status_out" | grep -q "Recording: yes"; then
-    run_tmrc record --stop
-  else
-    run_tmrc record --start
-  fi
+  run_tmrc record --start
+}
+
+cmd_stop() {
+  run_setup quiet
+  assert_swift_package
+  run_tmrc record --stop
 }
 
 cmd_status() {
@@ -445,6 +447,9 @@ main() {
       ;;
     record)
       cmd_record "$@"
+      ;;
+    stop)
+      cmd_stop "$@"
       ;;
     status)
       cmd_status "$@"
