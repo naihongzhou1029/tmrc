@@ -60,6 +60,16 @@ public sealed class ScreenCapture : IDisposable
     }
 
     /// <summary>
+    /// Constructor for unit testing that bypasses GDI initialization.
+    /// </summary>
+    internal ScreenCapture(int diffThreshold, int width, int height)
+    {
+        _diffThreshold = diffThreshold;
+        _width = width;
+        _height = height;
+    }
+
+    /// <summary>
     /// Captures one frame. Returns (pixels BGRA, hasEvent).
     /// First frame or resolution change is treated as hasEvent.
     /// </summary>
@@ -109,24 +119,42 @@ public sealed class ScreenCapture : IDisposable
         return (buffer, hasEvent);
     }
 
-    private bool ComputeHasEvent(byte[] current)
+    internal bool ComputeHasEvent(byte[] current)
     {
         if (_previous is null || _previous.Length != current.Length)
         {
             return true;
         }
 
+        // Pixel-aligned sampling: step in whole pixels (4 bytes each) so we never
+        // mix channels between samples. Target ~2 500 pixels ≈ 10 000 bytes.
+        int pixelStep = Math.Max(1, current.Length / 4 / 2_500);
+        int byteStep  = pixelStep * 4;
+
         long sum = 0;
-        int step = Math.Max(1, current.Length / 10_000);
-        for (int i = 0; i < current.Length && sum < _diffThreshold; i += step)
+        for (int i = 0; i + 3 < current.Length; i += byteStep)
         {
-            sum += Math.Abs((int)current[i] - (int)_previous[i]);
+            // Compare only B, G, R channels; skip A (index +3) to avoid
+            // GDI alpha-compositing bias on otherwise static frames.
+            sum += Math.Abs((int)current[i]     - (int)_previous[i]);
+            sum += Math.Abs((int)current[i + 1] - (int)_previous[i + 1]);
+            sum += Math.Abs((int)current[i + 2] - (int)_previous[i + 2]);
         }
 
-        sum = sum * (current.Length / Math.Max(1, step));
+        // Upscale the sampled total to estimate the full-frame difference.
+        // No early-exit above, so the sum is never artificially capped before
+        // being multiplied.
+        sum *= pixelStep;
         return sum >= _diffThreshold;
     }
 
+    /// <summary>
+    /// Sets the previous buffer manually for testing purposes.
+    /// </summary>
+    internal void SetPreviousForTest(byte[]? previous)
+    {
+        _previous = previous;
+    }
     private void Release()
     {
         if (_hOldBitmap != 0 && _hMemDc != 0)

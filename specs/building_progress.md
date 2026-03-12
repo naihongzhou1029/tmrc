@@ -1,6 +1,6 @@
 ## Windows/.NET build progress
 
-*Last synced: 2025-02-20. Fourteen milestones done: real capture + MP4, export to MP4/GIF, OCR (Tesseract), ops and polish, export by query, reindex, configurable OCR languages, debug mode, default export path, configurable retention, index prune on eviction, crash recovery, monotonic write_order, STT hook. Tests: 45 passed, 4 skipped (daemon E2E).*
+*Last synced: 2026-03-12. Fourteen milestones done: real capture + MP4, export to MP4/GIF, OCR (Tesseract), ops and polish, export by query, reindex, configurable OCR languages, debug mode, default export path, configurable retention, index prune on eviction, crash recovery, monotonic write_order, STT hook. Tests: 72 passed, 4 skipped (daemon E2E).*
 
 - **Repo layout**
   - Swift/macOS package (`Package.swift`, `Sources/`, `Tests/tmrcTests/`, `devops.sh`) **removed**.
@@ -162,7 +162,7 @@
   - **Indexing tests:** GetMaxWriteOrder, ListAllSegments ordering by write_order.
   - **Export tests** (ExportTests.cs): default export path uses cwd, session and range in filename; format extensions (gif, manifest); session name sanitized.
   - **Current test status**:
-    - `devops.ps1 test` → **45 tests passing, 4 tests skipped (daemon E2E), 0 failures.**
+    - `devops.ps1 test` → **72 tests passing, 4 tests skipped (daemon E2E), 0 failures.**
 
 - **Implemented (real capture + MP4 segments)**
   - **Tmrc.Cli/Native/GdiNative.cs**: GDI P/Invoke (GetWindowDC, GetWindowRect, BitBlt, GetDIBits, CreateCompatibleDC/CreateCompatibleBitmap, DeleteDC/DeleteObject, RECT, BITMAPINFO) for screen capture.
