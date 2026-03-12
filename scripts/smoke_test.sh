@@ -44,11 +44,44 @@ EOF
 echo ">>> Testing: ./devops.sh status"
 ./devops.sh status | grep -q "Recording: no"
 
-# 5. Test
+# 5. Install / Uninstall (with mocked HOME to verify Launch Agent plist)
+echo ">>> Testing: ./devops.sh install/uninstall (Launch Agent)"
+MOCK_HOME="$SMOKE_DIR/home"
+mkdir -p "$MOCK_HOME/Library/LaunchAgents"
+
+# Mock launchctl to avoid actually loading/unloading during smoke test
+mkdir -p "$SMOKE_DIR/bin"
+cat <<EOF > "$SMOKE_DIR/bin/launchctl"
+#!/usr/bin/env bash
+# Mock launchctl
+exit 0
+EOF
+chmod +x "$SMOKE_DIR/bin/launchctl"
+
+# Run install with mocked HOME and PATH
+HOME="$MOCK_HOME" PATH="$SMOKE_DIR/bin:$PATH" ./devops.sh install > /dev/null
+
+PLIST="$MOCK_HOME/Library/LaunchAgents/com.tmrc.daemon.plist"
+if [[ ! -f "$PLIST" ]]; then
+    echo "Error: Launch Agent plist was not created at $PLIST"
+    exit 1
+fi
+grep -q "com.tmrc.daemon" "$PLIST"
+grep -q "record" "$PLIST"
+grep -q -e "--start" "$PLIST"
+
+# Run uninstall with mocked HOME and PATH
+HOME="$MOCK_HOME" PATH="$SMOKE_DIR/bin:$PATH" ./devops.sh uninstall > /dev/null
+if [[ -f "$PLIST" ]]; then
+    echo "Error: Launch Agent plist was not removed after uninstall"
+    exit 1
+fi
+
+# 6. Test
 echo ">>> Testing: ./devops.sh swift-test"
 ./devops.sh swift-test
 
-# 6. Clean
+# 7. Clean
 echo ">>> Testing: ./devops.sh clean"
 ./devops.sh clean
 if [[ -d ".build" ]]; then

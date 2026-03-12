@@ -49,6 +49,8 @@ Commands:
   build       Run swift build
   test        Run full self-validating test suite (includes swift tests)
   lint        Run SwiftLint (if installed)
+  install     Build, install CLI config, and set to start on login
+  uninstall   Remove login item and stop recording
   record      Toggle recording (start if stopped, stop if running)
   status      Get recording status (tmrc status)
   dump        Export all recordings to current folder (one MP4)
@@ -222,6 +224,53 @@ cmd_build() {
   ok "Symlink $PROJECT_ROOT/tmrc -> $bin_path/tmrc"
 }
 
+cmd_install() {
+  cmd_build
+  run_tmrc install
+
+  local plist_path="$HOME/Library/LaunchAgents/com.tmrc.daemon.plist"
+  local bin_path="$PROJECT_ROOT/tmrc"
+  
+  ok "Installing Launch Agent to $plist_path..."
+  mkdir -p "$(dirname "$plist_path")"
+  
+  cat <<EOF > "$plist_path"
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.tmrc.daemon</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>$bin_path</string>
+        <string>record</string>
+        <string>--start</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>ProcessType</key>
+    <string>Background</string>
+</dict>
+</plist>
+EOF
+
+  launchctl unload "$plist_path" 2>/dev/null || true
+  launchctl load "$plist_path"
+  ok "tmrc is now set to start on login."
+}
+
+cmd_uninstall() {
+  local plist_path="$HOME/Library/LaunchAgents/com.tmrc.daemon.plist"
+  if [[ -f "$plist_path" ]]; then
+    ok "Removing Launch Agent..."
+    launchctl unload "$plist_path" 2>/dev/null || true
+    rm -f "$plist_path"
+  fi
+  run_tmrc record --stop || true
+  ok "tmrc has been uninstalled from login items and stopped."
+}
+
 cmd_swift_test() {
   run_setup quiet
   assert_swift_package
@@ -387,6 +436,12 @@ main() {
       ;;
     lint)
       cmd_lint "$@"
+      ;;
+    install)
+      cmd_install "$@"
+      ;;
+    uninstall)
+      cmd_uninstall "$@"
       ;;
     record)
       cmd_record "$@"

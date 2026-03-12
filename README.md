@@ -84,6 +84,8 @@ Use a single script, `devops.sh`, as the entry point for local development opera
 ./devops.sh build
 ./devops.sh test
 ./devops.sh lint
+./devops.sh install
+./devops.sh uninstall
 ./devops.sh record
 ./devops.sh status
 ./devops.sh dump
@@ -98,6 +100,8 @@ Use a single script, `devops.sh`, as the entry point for local development opera
 - `build`: runs `swift build` (requires `Package.swift`). Runs setup checks silently first.
 - `test`: runs `swift test` (requires `Package.swift`). Runs setup checks silently first.
 - `lint`: runs `swiftlint` when installed. Runs setup checks silently first.
+- `install`: builds the project, initializes storage/config, and sets up a macOS Launch Agent to automatically start recording on login.
+- `uninstall`: removes the Launch Agent and stops the recording daemon.
 - `record`: toggles recording (start if stopped, stop if running). Uses the built `tmrc` binary; no setup output or build log.
 - `status`: prints recording status, storage path, disk usage, and retention policy. Uses the built binary; no setup output or build log.
 - `dump`: exports all recordings to a single timestamped MP4 in the project root (`tmrc_dump_YYYY-MM-DD_HH-MM-SS.mp4`). Uses the built binary; no setup output or build log.
