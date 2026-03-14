@@ -38,9 +38,31 @@ Think “Rewind-like,” but CLI-only and self-hosted/local-first.
    - Enables search by time range or by natural-language query.
 
 3. **CLI**
-   - `tmrc record` — Start/stop or configure recording (or “ensure daemon is running”).
-   - `tmrc ask "..."` — Natural-language question → text answer (and optionally time references for export).
-   - `tmrc export` — Export a time range or query-matched segment to **MP4** or **GIF** (e.g. `--from`, `--to`, `--format`, `-o`).
+   - `tmrc start` — Spawn the recording daemon (no-op if already running).
+   - `tmrc stop` — Stop the recording daemon.
+   - `tmrc ask “...”` — Keyword search → text answer with timestamped citations. Accepts `--since` / `--until` to narrow the time range.
+   - `tmrc export` — Export a time range or query-matched segment to **MP4** or **GIF** (`--from`, `--to`, `--query`, `--format`, `-o`). This is the **default subcommand**, so flags can be passed directly to `tmrc` without spelling out `export`.
+
+### Time range expressions
+
+`--since`, `--until` (ask) and `--from`, `--to` (export) accept the following formats:
+
+| Expression | Example | Meaning |
+|---|---|---|
+| `now` | `now` | Current time |
+| `<N>h ago` | `2h ago` | N hours before now |
+| `<N>m ago` | `30m ago` | N minutes before now |
+| `<N>min ago` | `30min ago` | Same as `m ago` |
+| `<N>d ago` | `3d ago` | N days before now |
+| `yesterday` | `yesterday` | Exactly 24 hours before now |
+| `YYYY-MM-DD HH:MM:SS` | `2026-03-14 09:00:00` | Absolute timestamp (local timezone) |
+
+Examples:
+```bash
+tmrc ask “Xcode” --since “2h ago” --until “now”
+tmrc export --from “yesterday” --to “now” -o out.mp4
+tmrc export --from “2026-03-14 09:00:00” --to “2026-03-14 10:00:00” -o morning.mp4
+```
 
 ---
 
@@ -61,7 +83,7 @@ Think “Rewind-like,” but CLI-only and self-hosted/local-first.
 
 ## Status
 
-In progress. Implemented: CLI (record start/stop, status, install, uninstall, ask, export, rebuild-index), config (YAML + defaults), storage layout and retention, daemon process (start/stop; capture loop with ScreenCaptureKit), SQLite index schema and keyword search, time-range parser, ask engine (empty index, no-matches, citations), **export (stitch MP4/GIF, --from/--to/--query, missing-segment error, quality presets)**. Recording pipeline: ScreenCaptureKit capture (main/combined display), event-based segmenter, segment writer (AVAssetWriter H.264 MP4), segment index upsert and retention eviction; **OCR (Vision) per segment after write**; **permission-revoked detection and toast**; **low-disk check and toast**; **crash recovery (remove incomplete segments on start)**. Log file (single file, 7-day rotation), debug/version in logs. Pending: audio capture, window/app capture mode, optional Unix socket IPC.
+In progress. Implemented: CLI (start, stop, status, install, uninstall, ask, export [default subcommand], rebuild-index), config (YAML + defaults), storage layout and retention, daemon process (start/stop; capture loop with ScreenCaptureKit), SQLite index schema and keyword search, time-range parser, ask engine (empty index, no-matches, citations), **export (stitch MP4/GIF, --from/--to/--query, missing-segment error, quality presets)**. Recording pipeline: ScreenCaptureKit capture (main/combined display), event-based segmenter, segment writer (AVAssetWriter H.264 MP4), segment index upsert and retention eviction; **OCR (Vision) per segment after write**; **permission-revoked detection and toast**; **low-disk check and toast**; **crash recovery (remove incomplete segments on start)**. Log file (single file, 7-day rotation), debug/version in logs. Pending: audio capture, window/app capture mode, optional Unix socket IPC.
 
 ---
 
@@ -79,16 +101,13 @@ Use a single script, `devops.sh`, as the entry point for local development opera
 ### Usage
 
 ```bash
-./devops.sh help
 ./devops.sh setup
 ./devops.sh build
+./devops.sh symlink
 ./devops.sh test
 ./devops.sh lint
 ./devops.sh install
 ./devops.sh uninstall
-./devops.sh record
-./devops.sh stop
-./devops.sh status
 ./devops.sh dump
 ./devops.sh wipe
 ./devops.sh release <vX.Y.Z>
@@ -97,18 +116,16 @@ Use a single script, `devops.sh`, as the entry point for local development opera
 
 ### Command notes
 
-- `setup` / `check-env`: validates development toolchain and optional tools; prints the full environment checklist. Only this command shows the `[ok]` / `[warn]` lines.
-- `build`: runs `swift build` (requires `Package.swift`). Runs setup checks silently first.
+- `setup`: validates development toolchain and optional tools; prints the full environment checklist. Only this command shows the `[ok]` / `[warn]` lines.
+- `build`: runs `swift build` (requires `Package.swift`). Runs setup checks silently first. Also creates the `tmrc` symlink in the project root.
+- `symlink`: creates (or refreshes) the `tmrc` symlink in the project root pointing to the debug binary. Fails if the binary has not been built yet.
 - `test`: runs `swift test` (requires `Package.swift`). Runs setup checks silently first.
 - `lint`: runs `swiftlint` when installed. Runs setup checks silently first.
 - `install`: builds the project, initializes storage/config, and sets up a macOS Launch Agent to automatically start recording on login.
 - `uninstall`: removes the Launch Agent and stops the recording daemon.
-- `record`: starts recording (if not already running). Uses the built `tmrc` binary; no setup output or build log.
-- `stop`: stops recording (if running). Uses the built binary; no setup output or build log.
-- `status`: prints recording status, storage path, disk usage, and retention policy. Uses the built binary; no setup output or build log.
 - `dump`: exports all recordings to a single timestamped MP4 in the project root (`tmrc_dump_YYYY-MM-DD_HH-MM-SS.mp4`). Uses the built binary; no setup output or build log.
 - `wipe`: removes all segment files and clears the index; the daemon (if running) keeps running. Uses the built binary; no setup output or build log.
-- `release`: builds for production (`-c release`) and creates a zip bundle in the `dist/` directory. If GitHub CLI (`gh`) is available, it offers to tag and upload the release.
+- `release`: builds for production (`-c release`) and creates a zip bundle in the `dist/` directory. If GitHub CLI (`gh`) is available, it tags and uploads the release automatically (use `--no-upload` to skip).
 - `clean`: runs `swift package clean` (requires `Package.swift`). Does not run setup.
 
 ### Built executable

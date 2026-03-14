@@ -28,11 +28,7 @@ if [[ ! -x "./tmrc" ]]; then
     exit 1
 fi
 
-# 3. Help
-echo ">>> Testing: ./devops.sh help"
-./devops.sh help > /dev/null
-
-# 4. Status (should work even if daemon is not running)
+# 3. Status (should work even if daemon is not running)
 # We use a temporary storage root to avoid messing with user data
 export TMRC_CONFIG_PATH="$SMOKE_DIR/config.yaml"
 mkdir -p "$SMOKE_DIR/storage"
@@ -41,12 +37,12 @@ storage_root: $SMOKE_DIR/storage
 session: smoke-test
 EOF
 
-echo ">>> Testing: ./devops.sh status"
-./devops.sh status | grep -q "Recording: no"
+echo ">>> Testing: ./tmrc status"
+./tmrc status | grep -q "Recording: no"
 
-# 4.1 Stop (should work even if daemon is not running)
-echo ">>> Testing: ./devops.sh stop"
-./devops.sh stop | grep -q "No daemon is currently recording"
+# 3.1 Stop (should work even if daemon is not running)
+echo ">>> Testing: ./tmrc stop"
+./tmrc stop | grep -q "No daemon is currently recording"
 
 # 5. Install / Uninstall (with mocked HOME to verify Launch Agent plist)
 echo ">>> Testing: ./devops.sh install/uninstall (Launch Agent)"
@@ -71,8 +67,7 @@ if [[ ! -f "$PLIST" ]]; then
     exit 1
 fi
 grep -q "com.tmrc.daemon" "$PLIST"
-grep -q "record" "$PLIST"
-grep -q -e "--start" "$PLIST"
+grep -q "start" "$PLIST"
 
 # Run uninstall with mocked HOME and PATH
 HOME="$MOCK_HOME" PATH="$SMOKE_DIR/bin:$PATH" ./devops.sh uninstall > /dev/null

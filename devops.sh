@@ -51,20 +51,15 @@ Commands:
   lint        Run SwiftLint (if installed)
   install     Build, install CLI config, and set to start on login
   uninstall   Remove login item and stop recording
-  record      Start recording (if not already running)
-  stop        Stop recording (if running)
-  status      Get recording status (tmrc status)
+  symlink     Create symlink in project root pointing to debug binary
   dump        Export all recordings to current folder (one MP4)
   wipe        Remove all recordings and index; daemon keeps running
   release     Build for production, zip, and upload to GitHub (--no-upload to skip)
   clean       Clean Swift package artifacts
-  help        Show this help message
 
 Examples:
   ./devops.sh setup
   ./devops.sh build
-  ./devops.sh record
-  ./devops.sh stop
   ./devops.sh dump
   ./devops.sh wipe
 EOF
@@ -246,8 +241,7 @@ cmd_install() {
     <key>ProgramArguments</key>
     <array>
         <string>$bin_path</string>
-        <string>record</string>
-        <string>--start</string>
+        <string>start</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
@@ -269,7 +263,7 @@ cmd_uninstall() {
     launchctl unload "$plist_path" 2>/dev/null || true
     rm -f "$plist_path"
   fi
-  run_tmrc record --stop || true
+  run_tmrc stop || true
   ok "tmrc has been uninstalled from login items and stopped."
 }
 
@@ -289,22 +283,17 @@ cmd_lint() {
   swiftlint
 }
 
-cmd_record() {
-  run_setup quiet
+cmd_symlink() {
   assert_swift_package
-  run_tmrc record --start
-}
-
-cmd_stop() {
-  run_setup quiet
-  assert_swift_package
-  run_tmrc record --stop
-}
-
-cmd_status() {
-  run_setup quiet
-  assert_swift_package
-  run_tmrc status
+  local bin_path
+  bin_path="$(cd "$PROJECT_ROOT" && swift build --show-bin-path 2>/dev/null)"
+  local bin="$bin_path/tmrc"
+  if [[ ! -x "$bin" ]]; then
+    err "Debug binary not found at $bin. Run './devops.sh build' first."
+    exit 1
+  fi
+  ln -sf "$bin" "$PROJECT_ROOT/tmrc"
+  ok "Symlink $PROJECT_ROOT/tmrc -> $bin"
 }
 
 cmd_dump() {
@@ -441,14 +430,8 @@ main() {
     uninstall)
       cmd_uninstall "$@"
       ;;
-    record)
-      cmd_record "$@"
-      ;;
-    stop)
-      cmd_stop "$@"
-      ;;
-    status)
-      cmd_status "$@"
+    symlink)
+      cmd_symlink "$@"
       ;;
     dump)
       cmd_dump "$@"
@@ -461,9 +444,6 @@ main() {
       ;;
     clean)
       cmd_clean "$@"
-      ;;
-    help|-h|--help)
-      usage
       ;;
     *)
       err "Unknown command: $command"

@@ -33,7 +33,8 @@ struct Main: ParsableCommand {
         commandName: "tmrc",
         abstract: "Time Machine Recall Commander — record, index, and recall your screen.",
         subcommands: [
-            RecordCommand.self,
+            StartCommand.self,
+            StopCommand.self,
             AskCommand.self,
             ExportCommand.self,
             RebuildIndexCommand.self,
@@ -41,7 +42,8 @@ struct Main: ParsableCommand {
             UninstallCommand.self,
             StatusCommand.self,
             WipeCommand.self,
-        ]
+        ],
+        defaultSubcommand: ExportCommand.self
     )
 
     @Flag(name: .shortAndLong, help: "Enable verbose / debug logging")

@@ -11,10 +11,10 @@ public struct AskCommand: ParsableCommand {
     @Argument(help: "Natural-language question")
     public var query: String
 
-    @Option(name: .long, help: "Search from (e.g. \"2h ago\", \"2025-02-15 14:00:00\")")
+    @Option(name: .long, help: "Search from. Relative: \"now\", \"2h ago\", \"30m ago\", \"30min ago\", \"3d ago\", \"yesterday\". Absolute: \"YYYY-MM-DD HH:MM:SS\".")
     public var since: String?
 
-    @Option(name: .long, help: "Search until (e.g. \"1h ago\", \"now\")")
+    @Option(name: .long, help: "Search until. Same formats as --since.")
     public var until: String?
 
     public init() {}

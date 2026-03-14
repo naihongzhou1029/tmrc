@@ -8,10 +8,10 @@ public struct ExportCommand: ParsableCommand {
         abstract: "Export a time range or query-matched segment to MP4 or GIF."
     )
 
-    @Option(name: .long, help: "Start of range (absolute or relative, e.g. \"1h ago\")")
+    @Option(name: .long, help: "Start of range. Relative: \"now\", \"2h ago\", \"30m ago\", \"30min ago\", \"3d ago\", \"yesterday\". Absolute: \"YYYY-MM-DD HH:MM:SS\".")
     public var from: String?
 
-    @Option(name: .long, help: "End of range (absolute or relative)")
+    @Option(name: .long, help: "End of range. Same formats as --from.")
     public var to: String?
 
     @Option(name: .long, help: "Export range matching this query (merged)")
