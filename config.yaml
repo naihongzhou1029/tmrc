@@ -53,3 +53,7 @@ export_quality: high
 
 # Clear tmrc.log when starting recording from CLI (each daemon start). Does not clear on in-process restarts (e.g. stream error recovery). Default: true.
 clear_log_on_start: true
+
+# Show a menu bar icon while the daemon is recording. Provides status info and a stop button. Default: true.
+# Set to false for fully headless operation.
+menu_bar_icon: true

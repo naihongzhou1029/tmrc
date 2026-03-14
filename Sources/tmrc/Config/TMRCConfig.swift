@@ -60,6 +60,8 @@ public struct TMRCConfig: Codable {
     public var exportQuality: ExportQuality
     /// When true, clear tmrc.log when starting recording from CLI (daemon start). Does not clear on in-process restarts. Default true.
     public var clearLogOnStart: Bool
+    /// When true, show a menu bar icon while the daemon is recording. Default true.
+    public var menuBarIcon: Bool
 
     enum CodingKeys: String, CodingKey {
         case sampleRateMs = "sample_rate_ms"
@@ -75,6 +77,7 @@ public struct TMRCConfig: Codable {
         case askDefaultRange = "ask_default_range"
         case exportQuality = "export_quality"
         case clearLogOnStart = "clear_log_on_start"
+        case menuBarIcon = "menu_bar_icon"
     }
 
     public static let defaultSampleRateMs = 100.0
@@ -99,7 +102,8 @@ public struct TMRCConfig: Codable {
             ocrGranularity: .per_segment_summary,
             askDefaultRange: defaultAskDefaultRange,
             exportQuality: .high,
-            clearLogOnStart: true
+            clearLogOnStart: true,
+            menuBarIcon: true
         )
     }
 

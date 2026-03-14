@@ -59,6 +59,7 @@ public struct Installer {
         ask_default_range: 24h
         export_quality: high
         clear_log_on_start: true
+        menu_bar_icon: true
 
         """
         try content.write(toFile: path, atomically: true, encoding: .utf8)

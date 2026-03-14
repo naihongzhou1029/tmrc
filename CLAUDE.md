@@ -7,18 +7,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Use `devops.sh` as the single entry point for all development operations:
 
 ```bash
-./devops.sh build          # swift build (debug)
-./devops.sh test           # swift test
-./devops.sh lint           # swiftlint (if installed)
-./devops.sh clean          # swift package clean
-./devops.sh release <vX.Y.Z>  # release build + zip in dist/
+./devops.sh setup          # validate prerequisites (Swift, Xcode CLT, SwiftLint)
+./devops.sh build          # swift build (debug) + update tmrc symlink
+./devops.sh swift-test     # swift test (unit tests in Tests/tmrcTests/)
+./devops.sh test           # smoke test suite (scripts/smoke_test.sh)
+./devops.sh lint           # swiftlint
+./devops.sh record         # start recording (tmrc record --start)
+./devops.sh stop           # stop recording (tmrc record --stop)
+./devops.sh status         # show recording status
+./devops.sh dump           # export all recordings to MP4 in project root
+./devops.sh wipe           # delete all recordings and index
+./devops.sh install        # build + install LaunchAgent (start on login)
+./devops.sh uninstall      # remove LaunchAgent and stop recording
+./devops.sh release <vX.Y.Z>  # release build + zip in dist/, optional gh upload
+./devops.sh clean          # swift package clean + remove tmrc symlink
 ```
 
 Direct Swift commands also work:
 ```bash
 swift build                # debug build
 swift build -c release     # release build
-swift test                 # all tests
+swift test                 # all unit tests
 swift test --filter <TestName>  # single test
 ```
 
@@ -42,7 +51,7 @@ The `tmrc` symlink in the project root points to the debug binary for convenienc
 - `RebuildIndexCommand.swift` re-runs OCR over existing segments
 
 ### 3. CLI
-- `Sources/tmrc/CLI/` — one file per subcommand (`record`, `ask`, `export`, `status`, `install`, `uninstall`, `wipe`, `rebuild-index`)
+- `Sources/tmrc/CLI/` — one file per subcommand (`record`, `ask`, `export`, `status`, `install`, `uninstall`, `wipe`, `rebuild-index`); `record` uses `--start`/`--stop` flags rather than separate subcommands
 - `Sources/tmrc/Recall/` — `AskEngine.swift` keyword search + citation output; `TimeRangeParser.swift` parses `--from`/`--to` expressions
 - `Sources/tmrc/Export/` — `ExportEngine.swift` stitches segments into MP4 or GIF via AVFoundation/ffmpeg
 

@@ -16,6 +16,7 @@ private struct TMRCConfigPartial: Codable {
     var ask_default_range: String?
     var export_quality: String?
     var clear_log_on_start: Bool?
+    var menu_bar_icon: Bool?
 }
 
 public struct ConfigLoader {
@@ -95,6 +96,7 @@ public struct ConfigLoader {
         if let v = p.ask_default_range, !v.isEmpty { out.askDefaultRange = v }
         if let s = p.export_quality, let v = ExportQuality(rawValue: s) { out.exportQuality = v }
         if let v = p.clear_log_on_start { out.clearLogOnStart = v }
+        if let v = p.menu_bar_icon { out.menuBarIcon = v }
         return out
     }
 }
