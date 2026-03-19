@@ -149,7 +149,7 @@ Commands:
   dump        Export all recordings to a single MP4 via tmrc export
   wipe        Remove all recordings and index via tmrc wipe
   reindex     Re-run OCR on existing segments (tmrc reindex; optional --force)
-  release     Build for production and create a zip bundle (with gh upload)
+  release     Build for production, zip, and upload to GitHub (-NoUpload to skip)
   clean       Run dotnet clean for the Windows solution
   help        Show this help message
 
@@ -536,11 +536,11 @@ function Cmd-Reindex {
 function Cmd-Release {
     param(
         [string]$Version,
-        [switch]$NoInteractive
+        [switch]$NoUpload
     )
 
     if (-not $Version) {
-        Write-Err "Usage: .\devops.ps1 release <vX.Y.Z> [-NoInteractive]"
+        Write-Err "Usage: .\devops.ps1 release <vX.Y.Z> [-NoUpload]"
         exit 1
     }
 
@@ -581,32 +581,28 @@ function Cmd-Release {
     Write-Ok "Creating zip archive: $zipFile"
     Compress-Archive -Path "$distDir\*" -DestinationPath $zipFile -Force
 
-    if (Has-Command 'gh' -and -not $NoInteractive) {
-        Write-Host ""
-        Write-Host "GitHub CLI detected. Would you like to create a release and upload? (y/N)" -ForegroundColor Yellow
-        $reply = Read-Host
-        if ($reply -and $reply.Trim().ToLower() -eq 'y') {
-            Write-Ok "Checking if tag $Version exists..."
-            $tagCheck = git rev-parse $Version 2>$null
-            if ($LASTEXITCODE -ne 0) {
-                Write-Ok "Tagging $Version..."
-                git tag -a $Version -m "Release $Version"
-                git push origin $Version
-            }
-
-            Write-Ok "Creating/Updating GitHub release and uploading $zipFile..."
-            $releaseCheck = gh release view $Version 2>$null
-            if ($LASTEXITCODE -eq 0) {
-                gh release upload $Version "$zipFile#tmrc-$Version-$os-$arch.zip" --clobber
-            } else {
-                gh release create $Version $zipFile --title $Version --notes "Initial release for $os-$arch"
-            }
-        }
-    } elseif ($NoInteractive) {
-        Write-Ok "Release bundle is ready at: $zipFile (skipped interactive upload)"
-    } else {
-        Write-Warn "gh (GitHub CLI) not found. Skipping auto-upload."
+    if ($NoUpload) {
+        Write-Ok "Release bundle is ready at: $zipFile (upload skipped)"
+    } elseif (-not (Has-Command 'gh')) {
+        Write-Warn "gh (GitHub CLI) not found. Skipping upload."
         Write-Ok "Release bundle is ready at: $zipFile"
+    } else {
+        Write-Ok "Checking if tag $Version exists..."
+        git rev-parse $Version 2>$null | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            Write-Ok "Tagging $Version..."
+            git tag -a $Version -m "Release $Version"
+            git push origin $Version
+        }
+
+        Write-Ok "Creating/Updating GitHub release and uploading $zipFile..."
+        gh release view $Version 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            gh release upload $Version "$zipFile#tmrc-$Version-$os-$arch.zip" --clobber
+        } else {
+            gh release create $Version $zipFile --title $Version --notes "Release $Version for $os-$arch"
+        }
+        Write-Ok "Release $Version published."
     }
 }
 
@@ -725,12 +721,12 @@ switch ($Command) {
     'reindex' { Cmd-Reindex @Args; break }
     'release' {
         $v = $null
-        $ni = $false
+        $nu = $false
         foreach ($a in $Args) {
-            if ($a -ieq "-NoInteractive") { $ni = $true }
+            if ($a -ieq "-NoUpload") { $nu = $true }
             elseif ($a -match '^v\d+\.\d+\.\d+') { $v = $a }
         }
-        Cmd-Release -Version $v -NoInteractive:$ni
+        Cmd-Release -Version $v -NoUpload:$nu
         break
     }
     'clean' { Cmd-Clean; break }
