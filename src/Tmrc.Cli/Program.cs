@@ -54,8 +54,8 @@ public static class Program
                 return Status(tail);
             case "export":
                 return Export(tail);
-            case "ask":
-                return Ask(tail);
+            case "search":
+                return Search(tail);
             case "install":
                 return Install(tail);
             case "uninstall":
@@ -82,7 +82,7 @@ public static class Program
     {
         Console.WriteLine("tmrc (Windows) - Time Machine Recall Commander");
         Console.WriteLine("Usage: tmrc [--debug] <command> [options]");
-        Console.WriteLine("Commands: record, status, export, ask, install, uninstall, wipe, reindex, --version");
+        Console.WriteLine("Commands: record, status, export, search, install, uninstall, wipe, reindex, --version");
         Console.WriteLine("  --debug    Enable verbose logging (same as TMRC_DEBUG=1). Daemon inherits when started with tmrc --debug record.");
     }
 
@@ -614,11 +614,11 @@ public static class Program
         return 0;
     }
 
-    private static int Ask(string[] args)
+    private static int Search(string[] args)
     {
         if (args.Length == 0)
         {
-            Console.Error.WriteLine("Usage: tmrc ask \"query\" [--since <expr>] [--until <expr>]");
+            Console.Error.WriteLine("Usage: tmrc search \"query\" [--since <expr>] [--until <expr>]");
             return 1;
         }
 
@@ -1179,7 +1179,7 @@ public static class Program
                             var binPath = Path.Combine(storage.SegmentsDirectory, $"{start.UtcDateTime:yyyyMMdd_HHmmssfff}_{id}.bin");
                             File.WriteAllText(binPath, $"tmrc segment {id}");
                             indexStore.UpsertSegment(id, start, end, binPath, null, SegmentStt.IsAvailable() ? SegmentStt.Recognize(binPath) : null, writeOrder);
-                        }
+                           }
                     }
                     else
                     {
@@ -1193,7 +1193,7 @@ public static class Program
                     logger.Error($"Failed to write segment {id}: {ex.Message}");
                     if (ex is IOException || ex.InnerException is IOException)
                     {
-                        notifier.Toast("Time Machine", "Disk full or write error; stopping recording.");
+                        notifier.Toast("Timechine", "Disk full or write error; stopping recording.");
                         shutdownCts.Cancel();
                     }
                 }
@@ -1339,4 +1339,6 @@ public static class Program
             ? level
             : LogLevel.Info;
 }
+
+
 

@@ -25,9 +25,15 @@
 
 ## Development Workflow
 
-Use the `./devops.ps1` PowerShell script as the primary entry point for all development tasks.
+### Safe Build & Run Workflow
+Before executing any build or run command (e.g., `dotnet build`, `dotnet run`, or `./devops.ps1 build`), you MUST follow this sequence:
+1. **Check Daemon Status**: `./devops.ps1 status`
+2. **Stop the Daemon**: If `Recording: yes`, run `./devops.ps1 stop`.
+3. **Verify Termination**: Ensure file locks are released and `tmrc.pid` is deleted.
+4. **Proceed with Task**: Only proceed with the build or run once the daemon is stopped.
 
 ### Core Commands
+
 
 | Command | Description |
 | :--- | :--- |

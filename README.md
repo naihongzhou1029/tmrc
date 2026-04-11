@@ -40,7 +40,7 @@ Think “Rewind-like,” but CLI-only and self-hosted/local-first.
 3. **CLI**
    - `tmrc record` — Start recording (no-op with notice if already recording).
   - `tmrc stop` — Stop recording (no-op with notice if not recording).
-   - `tmrc ask "..."` — Natural-language question → text answer (and optionally time references for export).
+   - `tmrc search "..."` — Natural-language question → text answer (and optionally time references for export).
    - `tmrc export` — Export a time range or query-matched segment to **MP4** or **GIF** (e.g. `--from`, `--to`, `--format`, `-o`).
 
 ---
@@ -115,11 +115,11 @@ Implemented (Windows, this phase):
 
 Implemented (Windows, export):
 
-- **Export to MP4/GIF:** `tmrc export (--from <expr> --to <expr> | --query "..." [--since <expr>] [--until <expr>]) [-o <path>] [--format mp4|gif|manifest]`. Default format is **mp4**. When `-o` is omitted, output is written to the current directory with a generated filename (session + time range). Time-range export uses the given range; **query export** finds segments matching the query (same keyword search as `tmrc ask`), merges their time range (earliest start to latest end), and exports that span. Default scope for `--query` is last 24h; use `--since`/`--until` to override. FFmpeg stitches segment MP4s into a single file; quality presets (low/medium/high) from config `export_quality`. Use `--format manifest` to write a text manifest of segment paths only.
+- **Export to MP4/GIF:** `tmrc export (--from <expr> --to <expr> | --query "..." [--since <expr>] [--until <expr>]) [-o <path>] [--format mp4|gif|manifest]`. Default format is **mp4**. When `-o` is omitted, output is written to the current directory with a generated filename (session + time range). Time-range export uses the given range; **query export** finds segments matching the query (same keyword search as `tmrc search`), merges their time range (earliest start to latest end), and exports that span. Default scope for `--query` is last 24h; use `--since`/`--until` to override. FFmpeg stitches segment MP4s into a single file; quality presets (low/medium/high) from config `export_quality`. Use `--format manifest` to write a text manifest of segment paths only.
 
 Implemented (Windows, indexing/ask):
 
-- **OCR:** When **Tesseract** and FFmpeg are on PATH, the recorder daemon runs OCR on the first frame of each closed MP4 segment and stores text in the index (`ocr_text`). Languages are configurable via `config.ini` → `ocr_recognition_languages` (BCP 47 / locale, e.g. `en-US`, `zh-Hant`, `zh-Hans`); values are mapped to Tesseract `-l` codes (eng, chi_tra, chi_sim, jpn, kor, or pass-through). Default: `["en-US", "zh-Hant", "zh-Hans"]`. `tmrc ask` matches queries against this text (keyword search). Without Tesseract, segments are still recorded and export works; ask has no text to search.
+- **OCR:** When **Tesseract** and FFmpeg are on PATH, the recorder daemon runs OCR on the first frame of each closed MP4 segment and stores text in the index (`ocr_text`). Languages are configurable via `config.ini` → `ocr_recognition_languages` (BCP 47 / locale, e.g. `en-US`, `zh-Hant`, `zh-Hans`); values are mapped to Tesseract `-l` codes (eng, chi_tra, chi_sim, jpn, kor, or pass-through). Default: `["en-US", "zh-Hant", "zh-Hans"]`. `tmrc search` matches queries against this text (keyword search). Without Tesseract, segments are still recorded and export works; ask has no text to search.
 - **Reindex:** `tmrc reindex [--force]` re-runs OCR on segments already in the index using the same config languages (improves UX without re-recording; requires Tesseract and FFmpeg).
 
 Not yet implemented (Windows):
@@ -139,7 +139,7 @@ Use a single PowerShell script, `devops.ps1`, as the entry point for local devel
 - .NET SDK 8 (the script can install it via `winget` or `choco` if missing).
 - **FFmpeg** (on PATH): used for MP4 segment encoding during recording and for export stitching. Without it, segments are stored as `.bin` and video export is unavailable.
 - Optional:
-  - **Tesseract** (on PATH): enables OCR on each segment so `tmrc ask` can search recorded text.
+  - **Tesseract** (on PATH): enables OCR on each segment so `tmrc search` can search recorded text.
   - `ffprobe` (for media export test validation).
   - `dotnet-format` (for lint/format workflow).
 
