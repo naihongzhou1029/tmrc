@@ -646,7 +646,7 @@ public static class Program
         var query = string.Join(" ", queryParts).Trim();
         if (string.IsNullOrWhiteSpace(query))
         {
-            Console.Error.WriteLine("Ask query must not be empty.");
+            Console.Error.WriteLine("Search query must not be empty.");
             return 1;
         }
 
@@ -1193,7 +1193,7 @@ public static class Program
                     logger.Error($"Failed to write segment {id}: {ex.Message}");
                     if (ex is IOException || ex.InnerException is IOException)
                     {
-                        notifier.Toast("Timechine", "Disk full or write error; stopping recording.");
+                        notifier.Toast("Time Machine", "Disk full or write error; stopping recording.");
                         shutdownCts.Cancel();
                     }
                 }

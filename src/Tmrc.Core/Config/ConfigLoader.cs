@@ -107,6 +107,30 @@ public static class ConfigLoader
                             builder = builder with { OcrRecognitionLanguages = langs };
                     }
                     break;
+                case "ocr_granularity":
+                    // ignored for now but kept for compatibility
+                    break;
+                case "search_default_range":
+                    if (!string.IsNullOrWhiteSpace(value))
+                        builder = builder with { SearchDefaultRange = value };
+                    break;
+                case "export_quality":
+                    if (!string.IsNullOrWhiteSpace(value))
+                        builder = builder with
+                        {
+                            ExportQuality = value.ToLowerInvariant() switch
+                            {
+                                "low" => ExportQuality.Low,
+                                "medium" => ExportQuality.Medium,
+                                "high" => ExportQuality.High,
+                                _ => ExportQuality.High
+                            }
+                        };
+                    break;
+                case "log_level":
+                    if (!string.IsNullOrWhiteSpace(value))
+                        builder = builder with { LogLevel = value };
+                    break;
                 case "retention_max_age_days":
                     if (int.TryParse(value, out var maxAge) && maxAge >= 0)
                         builder = builder with { RetentionMaxAgeDays = maxAge };

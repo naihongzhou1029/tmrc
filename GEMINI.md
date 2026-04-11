@@ -11,16 +11,16 @@
   - **Tesseract:** Used for OCR indexing of captured segments.
   - **SQLite:** Used for storing the segment index (`ocr_text`, `stt_text`, metadata).
 - **Key Components:**
-  - **Tmrc.Cli:** The main entry point for user commands (`record`, `ask`, `export`, etc.).
-  - **Tmrc.Core:** Shared logic for configuration, storage, indexing, and recall.
-  - **test_suite/Tmrc.Tests:** Comprehensive xUnit test suite.
+  - Tmrc.Cli: The main entry point for user commands (record, search, export, etc.).
+  - Tmrc.Core: Shared logic for configuration, storage, indexing, and recall.
+  - test_suite/Tmrc.Tests: Comprehensive xUnit test suite.
 
-## Architecture
+  ## Architecture
 
-1. **Background Daemon:** Started via `tmrc record`. It captures the screen (GDI BitBlt), segments recordings based on event activity, and runs the indexing pipeline (OCR via Tesseract).
-2. **Indexing Pipeline:** Processes closed MP4 segments to extract text and updates the SQLite index.
-3. **Recall (Ask/Export):**
-   - `ask`: Keyword search over the OCR index to answer natural language questions.
+  1. **Background Daemon:** Started via `tmrc record`. It captures the screen (GDI BitBlt), segments recordings based on event activity, and runs the indexing pipeline (OCR via Tesseract).
+  2. **Indexing Pipeline:** Processes closed MP4 segments to extract text and updates the SQLite index.
+  3. **Recall (Search/Export):**
+   - `search`: Keyword search over the OCR index to answer natural language questions.
    - `export`: Stitches segments into MP4/GIF for a given time range or query match.
 
 ## Development Workflow

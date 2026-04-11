@@ -2,7 +2,7 @@
 
 Plan for implementing a **Windows** version of **tmrc** (Time Machine Recall Commander), aligned with the behaviour and semantics defined in [spec.md](spec.md) and validated by [test.md](test.md). The macOS implementation is Swift on Apple Silicon using ScreenCaptureKit, AVFoundation, Vision, and a CLI–daemon model; this document maps each area to Windows equivalents and calls out decisions, risks, and open points.
 
-**Objective:** Deliver the same user-facing behaviour (record → index → ask / export) on Windows, with a Windows-native stack. Config schema and CLI surface should stay as close as possible to the macOS version for cross-platform consistency.
+**Objective:** Deliver the same user-facing behaviour (record → index → search / export) on Windows, with a Windows-native stack. Config schema and CLI surface should stay as close as possible to the macOS version for cross-platform consistency.
 
 ---
 
@@ -82,7 +82,7 @@ Spec reference: Section 6 (CLI & Daemon). Test items: 58–61 (daemon start/stop
 | Aspect | macOS | Windows | Notes / TODO |
 |------|--------|---------|----------------|
 | **Format** | YAML (`config.yaml`) | Same; use a YAML parser for .NET (e.g. YamlDotNet) or equivalent in C++/Rust. | |
-| **Keys** | As in repo `config.yaml`: sample_rate_ms, display, capture_mode, audio_enabled, record_when_locked_or_sleeping, session, storage_root, index_mode, ocr_*, ask_default_range, export_quality | Keep same keys and semantics; add Windows-specific only if needed (e.g. capture API choice). **TODO:** Validate `storage_root` and path expansion on Windows. | |
+| **Keys** | As in repo `config.yaml`: sample_rate_ms, display, capture_mode, audio_enabled, record_when_locked_or_sleeping, session, storage_root, index_mode, ocr_*, search_default_range, export_quality | Keep same keys and semantics; add Windows-specific only if needed (e.g. capture API choice). **TODO:** Validate `storage_root` and path expansion on Windows. | |
 | **Log file** | Single file `storage_root/tmrc.log`; 7-day rotation (spec 2, 6.5) | Same path; rotation: **TODO:** Implement in-process (e.g. by date in filename or size+date); no logrotate. Document rotation policy. | |
 | **Log level** | Default info; configurable | Same. | |
 
@@ -116,12 +116,12 @@ Spec reference: Section 3. Test items: 29, 35–38, 82.
 
 ---
 
-## 9. Recall: Ask and export
+## 9. Recall: Search and export
 
 | Aspect | macOS | Windows | Notes / TODO |
 |------|--------|---------|----------------|
 | **Time range parser** | Relative (“1h ago”) and absolute; local time (spec 4.1, 5.1, 8.5) | **TODO:** Port or reimplement parser; use system local time and same format. Test items 41–42. | |
-| **Ask** | Keyword/semantic search, citations, no/multiple matches (spec 4) | Same behaviour; keyword search from OCR text; optional embeddings/LLM later. **TODO:** Citation format YYYY-MM-DD HH:MM:SS (spec 4.4). | |
+| **Search** | Keyword/semantic search, citations, no/multiple matches (spec 4) | Same behaviour; keyword search from OCR text; optional embeddings/LLM later. **TODO:** Citation format YYYY-MM-DD HH:MM:SS (spec 4.4). | |
 | **Export** | Stitch segments, H.264 MP4 / GIF; quality presets; `--from`/`--to`/`--query` (spec 5) | Use **Media Foundation** to decode/concat/encode H.264 MP4 exports. For GIF, implement either a lightweight encoder on top of decoded frames or a secondary pipeline; keep the CLI surface the same as macOS but document any Windows-specific GIF limitations. Missing segment → fail with clear message (spec 9.4, test 50). Concurrency: allow multiple exports (spec 5.7). | |
 | **Export while recording** | Allowed; only read closed segments (spec 5.8) | Same; ensure no open file conflict (e.g. write to temp then move, or share-read access). | |
 
@@ -173,7 +173,7 @@ Spec reference: Section 7, 9. Test items: 71–73.
 | **Tests** | Swift tests; many unit, some E2E (test.md) | **TODO:** Port or reimplement tests per test.md; mark tests that need real capture, permissions, or long run (E2E/soak). CI: run unit tests on Windows runner; E2E optional or manual. | |
 | **Lint** | swiftlint | **TODO:** Choose linter (e.g. StyleCop, EditorConfig, or Roslyn analyzers for C#). | |
 
-Spec reference: Section 10. Test items: all of test.md; many are platform-agnostic (config, paths, index, ask, export logic).
+Spec reference: Section 10. Test items: all of test.md; many are platform-agnostic (config, paths, index, search, export logic).
 
 ---
 
@@ -188,8 +188,8 @@ Spec reference: Section 10. Test items: all of test.md; many are platform-agnost
   **Deliverable:** Daemon records screen to segments under storage_root; retention and single-instance enforced.
 
 - **Phase 3 – Index and OCR**  
-  SQLite schema; OCR integration (post-segment); rebuild-index; ask (keyword search) and export (stitch by time range).  
-  **Deliverable:** `tmrc ask` and `tmrc export --from/--to` working with real segments and index.
+  SQLite schema; OCR integration (post-segment); rebuild-index; search (keyword search) and export (stitch by time range).  
+  **Deliverable:** `tmrc search` and `tmrc export --from/--to` working with real segments and index.
 
 - **Phase 4 – Parity and polish**  
   Query-to-export; quality presets; GIF export; time-range parser edge cases; config location (installed); devops.ps1; test matrix (unit + critical E2E); documentation and known issues.

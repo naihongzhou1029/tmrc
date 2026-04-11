@@ -55,7 +55,7 @@ public sealed record class TmrcConfig
     public IReadOnlyList<string> OcrRecognitionLanguages { get; init; } =
         new[] { "en-US", "zh-Hant", "zh-Hans" };
 
-    public string AskDefaultRange { get; init; } = "24h";
+    public string SearchDefaultRange { get; init; } = "24h";
 
     public ExportQuality ExportQuality { get; init; } = ExportQuality.High;
 

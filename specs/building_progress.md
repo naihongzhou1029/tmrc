@@ -24,7 +24,7 @@
     - YAML-based config loader with defaults/overrides for:
       - `sample_rate_ms`, `session`, `capture_mode`, `display`, `audio_enabled`,
         `record_when_locked_or_sleeping`, `storage_root`, `retention_max_age_days`, `retention_max_disk_bytes`,
-        `index_mode`, `ocr_recognition_languages`, `ask_default_range`, `export_quality`, `log_level`.
+        `index_mode`, `ocr_recognition_languages`, `search_default_range`, `export_quality`, `log_level`.
     - `storage_root` default: `%USERPROFILE%\.tmrc`.
     - Validates/normalizes `sample_rate_ms` (> 0, else default 100 ms).
     - Maps `index_mode` to `normal` / `advanced` and rejects invalid values.
@@ -67,14 +67,14 @@
     - SQLite-backed index store per session (one `.sqlite` file) using `Microsoft.Data.Sqlite`.
     - Schema: `segments(id TEXT PRIMARY KEY, start_utc TEXT, end_utc TEXT, path TEXT, ocr_text TEXT, stt_text TEXT, write_order INTEGER)`.
     - **DeleteByPaths(paths):** removes segment rows whose path is in the list; used after retention eviction so index and segments stay in sync.
-    - **write_order (spec 8.5):** optional monotonic column for segment ordering; daemon sets it so export/ask order by write_order then start_utc (stable when clock changes). **GetMaxWriteOrder()** returns max for daemon to continue sequence.
+    - **write_order (spec 8.5):** optional monotonic column for segment ordering; daemon sets it so export/search order by write_order then start_utc (stable when clock changes). **GetMaxWriteOrder()** returns max for daemon to continue sequence.
     - Backward-compatible migration: adds `path` and `write_order` columns via `ALTER TABLE` if missing on existing DBs.
     - Supports `UpsertSegment(id, start, end, path, ocrText, sttText, writeOrder?)` and `QueryByTimeRange` (overlapping segments ordered by write_order then start_utc).
     - `SegmentRow` includes `Path` so export can resolve segments to on-disk files without filename guessing.
 
 - **CLI (Tmrc.Cli)**
   - `Program.cs`:
-    - Commands: `record`, `status`, `export`, `ask`, `install`, `uninstall`, `wipe`, `reindex`, `--version` (plus internal `__daemon` entrypoint). Global flag: `--debug` (or env `TMRC_DEBUG=1`) enables verbose logging; daemon uses Debug level when so started.
+    - Commands: `record`, `status`, `export`, `search`, `install`, `uninstall`, `wipe`, `reindex`, `--version` (plus internal `__daemon` entrypoint). Global flag: `--debug` (or env `TMRC_DEBUG=1`) enables verbose logging; daemon uses Debug level when so started.
     - Current behavior:
       - `--version` prints `TmrcVersion.Current`.
       - `install`:
@@ -91,7 +91,7 @@
       - **Daemon (`__daemon`)**:
         - Writes PID file; creates `Logger` (storage root log file, level from config).
         - **IPC thread**: `NamedPipeServerStream("tmrc-daemon")` accepts connections; on `shutdown` command, sets cancellation and replies `ok`.
-        - **Recording loop**: On startup, **crash recovery** runs: `CrashRecovery.CleanOrphanSegmentFiles` removes segment files not in the index. Uses **real screen capture** when available (GDI BitBlt via `ScreenCapture`); otherwise simulated (30% event). Event detection: frame-diff threshold for real capture. On flush, writes segment as **MP4** (when FFmpeg on PATH) via `Mp4SegmentWriter` (BMP sequence → FFmpeg libx264), else `.bin` placeholder. Filename `yyyyMMdd_HHmmssfff_<id>.mp4` or `.bin`. **Monotonic ordering:** daemon passes `write_order` (GetMaxWriteOrder()+1, incrementing) to UpsertSegment so export/ask order is stable. After writing MP4, **OCR** runs when Tesseract is on PATH: `SegmentOcr` extracts first frame via FFmpeg, runs Tesseract CLI, then upserts `ocr_text`; **STT** hook: `SegmentStt.Recognize` is called (stub returns null for now). Index and retention from config (defaults 30 days, 50 GB).
+        - **Recording loop**: On startup, **crash recovery** runs: `CrashRecovery.CleanOrphanSegmentFiles` removes segment files not in the index. Uses **real screen capture** when available (GDI BitBlt via `ScreenCapture`); otherwise simulated (30% event). Event detection: frame-diff threshold for real capture. On flush, writes segment as **MP4** (when FFmpeg on PATH) via `Mp4SegmentWriter` (BMP sequence → FFmpeg libx264), else `.bin` placeholder. Filename `yyyyMMdd_HHmmssfff_<id>.mp4` or `.bin`. **Monotonic ordering:** daemon passes `write_order` (GetMaxWriteOrder()+1, incrementing) to UpsertSegment so export/search order is stable. After writing MP4, **OCR** runs when Tesseract is on PATH: `SegmentOcr` extracts first frame via FFmpeg, runs Tesseract CLI, then upserts `ocr_text`; **STT** hook: `SegmentStt.Recognize` is called (stub returns null for now). Index and retention from config (defaults 30 days, 50 GB).
       - `status`:
         - Loads config and prints:
           - `Recording: yes|no` based on `tmrc.pid` and a live process.
@@ -104,9 +104,9 @@
         - Clears and recreates `segments/` under current `storage_root`.
       - `reindex [--force]`:
         - Re-runs OCR on existing MP4 segments in the session index (Tesseract + FFmpeg required). Default: only segments with no `ocr_text`; `--force` re-indexes all. Prints summary (indexed / skipped / OCR failed).
-      - `ask`:
-        - **Basic keyword-only ask** over the SQLite index (works on real index data produced by the daemon):
-          - Usage: `tmrc ask "query" [--since <expr>] [--until <expr>]`.
+      - `search`:
+        - **Basic keyword-only search** over the SQLite index (works on real index data produced by the daemon):
+          - Usage: `tmrc search "query" [--since <expr>] [--until <expr>]`.
           - Default scope: last 24h when `--since`/`--until` omitted.
           - Uses `TimeRangeParser.ParseRelative` for expressions like `"1h ago"`, `"yesterday"`, or absolute timestamps.
           - Binds to session index via `IndexStore`; filters by `ocr_text` + `stt_text` (case-insensitive); up to 5 matches with citations `YYYY-MM-DD HH:MM:SS [segment-id] snippet`.
@@ -180,7 +180,7 @@
 - **Next suggested milestones**
   1. ~~**Real capture:** Integrate capture and MP4 segments.~~ Done: GDI capture + FFmpeg MP4 segments; optional WGC upgrade later.
   2. ~~**Export to MP4/GIF:** Stitch segment MP4s into a single output file (MP4 or GIF); respect `export_quality` and `-o`; fail clearly on missing segments.~~ Done: VideoExport + CLI `--format mp4|gif|manifest`.
-  3. ~~**OCR/STT and ask:** Populate `ocr_text`/`stt_text` when segments are closed (or via re-index); keep current keyword ask.~~ Done: Tesseract OCR on each MP4 segment (FFmpeg extract frame + Tesseract CLI); ask already keyword-over-index. STT and re-index subcommand still TBD.
+  3. ~~**OCR/STT and search:** Populate `ocr_text`/`stt_text` when segments are closed (or via re-index); keep current keyword search.~~ Done: Tesseract OCR on each MP4 segment (FFmpeg extract frame + Tesseract CLI); search already keyword-over-index. STT and re-index subcommand still TBD.
   4. ~~**Ops and polish:** Log rotation, uninstall flags, Windows toasts, and edge-case handling (disk full, read-only, etc.).~~ Done: 7-day log rotation; uninstall --remove-data; WindowsToastNotifier (PowerShell+WinRT); TryProbeWritable at daemon start; toast and exit on write IOException.
   5. ~~**Export by query:** One merged range from query matches.~~ Done: `tmrc export --query "..." -o <path> [--since/--until]`; keyword match over index, merge min(start)–max(end), stitch all segments in that span.
   6. ~~**Reindex subcommand:** Re-run OCR on existing segments.~~ Done: `tmrc reindex [--force]`; `IndexStore.ListAllSegments()`; default skip segments that already have `ocr_text`, `--force` re-OCR all MP4 segments in index.
@@ -188,7 +188,7 @@
   8. ~~**Debug mode (spec 10.2):**~~ Done: `tmrc --debug <command>` or `TMRC_DEBUG=1` sets verbose logging; daemon uses Debug log level when env set; Logger.Debug(); frame/segment activity logged at Debug.
   9. ~~**Default export output path (spec Export 6):**~~ Done: when `-o` is omitted, export writes to cwd with generated filename `tmrc_export_<session>_<from>_<to>.<mp4|gif|manifest>`. `ExportPathHelper.GetDefaultExportPath`; unit tests in `ExportTests.cs`.
   10. ~~**Configurable retention (spec 2.3):**~~ Done: `retention_max_age_days` and `retention_max_disk_bytes` in config.yaml; daemon uses them for RetentionManager. Defaults 30 days, 50 GB; 0 disables. Config tests added.
-  11. ~~**Index prune on retention eviction:**~~ Done: `RetentionManager.EvictIfNeeded` returns `(DeletedCount, DeletedPaths)`; daemon calls `IndexStore.DeleteByPaths(evictedPaths)` so ask/export and reindex never see stale segment rows. StorageTests and IndexingTests updated.
+  11. ~~**Index prune on retention eviction:**~~ Done: `RetentionManager.EvictIfNeeded` returns `(DeletedCount, DeletedPaths)`; daemon calls `IndexStore.DeleteByPaths(evictedPaths)` so search/export and reindex never see stale segment rows. StorageTests and IndexingTests updated.
   12. ~~**Crash recovery (spec 8.4):**~~ Done: `CrashRecovery.CleanOrphanSegmentFiles`; daemon runs it on startup to remove segment files not in the index. StorageTests added.
   13. ~~**Monotonic ordering (spec 8.5):**~~ Done: `IndexStore.write_order` column; daemon passes incrementing write_order; QueryByTimeRange/ListAllSegments order by write_order then start_utc. IndexingTests added.
   14. ~~**STT hook:**~~ Done: `SegmentStt` stub (returns null); daemon calls it so stt_text can be populated when STT is implemented.

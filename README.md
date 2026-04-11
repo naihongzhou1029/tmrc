@@ -1,6 +1,6 @@
 # Time Machine Recall Commander (tmrc)
 
-A command-line tool that records your screen (and optionally audio), indexes the content, and lets you recall the past—either by exporting video/GIF or by asking questions and getting text replies. No GUI; CLI only.
+A command-line tool that records your screen (and optionally audio), indexes the content, and lets you recall the past—either by exporting video/GIF or by searching with natural language queries and getting text replies. No GUI; CLI only.
 
 **Executable name:** `tmrc`
 
@@ -12,7 +12,7 @@ A command-line tool that records your screen (and optionally audio), indexes the
 - **Index** the recording so it can be searched (OCR, speech-to-text, optionally embeddings).
 - **Recall** in two ways:
   1. **Export** — User requests a time range (or a query) and gets a **GIF** or **MP4** file.
-  2. **Ask** — User asks in natural language and gets **text** replies (no GUI).
+  2. **Search** — User searches in natural language and gets **text** replies (no GUI).
 
 Think “Rewind-like,” but CLI-only and self-hosted/local-first.
 
@@ -71,7 +71,7 @@ Implemented so far:
     - `sample_rate_ms`, `session`, `capture_mode`, `display`, `audio_enabled`,
       `record_when_locked_or_sleeping`, `storage_root`, `retention_max_age_days`, `retention_max_disk_bytes`,
       `index_mode`,
-      `ocr_recognition_languages`, `ask_default_range`, `export_quality`, `log_level`.
+      `ocr_recognition_languages`, `search_default_range`, `export_quality`, `log_level`.
   - `storage_root` default: `%USERPROFILE%\.tmrc`.
 - **Storage layout & retention**:
   - `storage_root` with:
@@ -80,7 +80,7 @@ Implemented so far:
     - `tmrc.pid`, `tmrc.log`.
   - `RetentionManager` with:
     - Max age (days) and max disk (bytes) eviction (oldest-first); configurable via `retention_max_age_days` and `retention_max_disk_bytes` (defaults 30 days, 50 GB).
-    - When segments are evicted, the index is pruned so ask/export and reindex only reference existing files.
+    - When segments are evicted, the index is pruned so search/export and reindex only reference existing files.
   - Disk-usage computation for `storage_root`.
 - **Time-range parsing**:
   - Absolute: `"YYYY-MM-DD HH:mm:ss"` in local time.
@@ -117,15 +117,15 @@ Implemented (Windows, export):
 
 - **Export to MP4/GIF:** `tmrc export (--from <expr> --to <expr> | --query "..." [--since <expr>] [--until <expr>]) [-o <path>] [--format mp4|gif|manifest]`. Default format is **mp4**. When `-o` is omitted, output is written to the current directory with a generated filename (session + time range). Time-range export uses the given range; **query export** finds segments matching the query (same keyword search as `tmrc search`), merges their time range (earliest start to latest end), and exports that span. Default scope for `--query` is last 24h; use `--since`/`--until` to override. FFmpeg stitches segment MP4s into a single file; quality presets (low/medium/high) from config `export_quality`. Use `--format manifest` to write a text manifest of segment paths only.
 
-Implemented (Windows, indexing/ask):
+Implemented (Windows, indexing/search):
 
-- **OCR:** When **Tesseract** and FFmpeg are on PATH, the recorder daemon runs OCR on the first frame of each closed MP4 segment and stores text in the index (`ocr_text`). Languages are configurable via `config.ini` → `ocr_recognition_languages` (BCP 47 / locale, e.g. `en-US`, `zh-Hant`, `zh-Hans`); values are mapped to Tesseract `-l` codes (eng, chi_tra, chi_sim, jpn, kor, or pass-through). Default: `["en-US", "zh-Hant", "zh-Hans"]`. `tmrc search` matches queries against this text (keyword search). Without Tesseract, segments are still recorded and export works; ask has no text to search.
+- **OCR:** When **Tesseract** and FFmpeg are on PATH, the recorder daemon runs OCR on the first frame of each closed MP4 segment and stores text in the index (`ocr_text`). Languages are configurable via `config.ini` → `ocr_recognition_languages` (BCP 47 / locale, e.g. `en-US`, `zh-Hant`, `zh-Hans`); values are mapped to Tesseract `-l` codes (eng, chi_tra, chi_sim, jpn, kor, or pass-through). Default: `["en-US", "zh-Hant", "zh-Hans"]`. `tmrc search` matches queries against this text (keyword search). Without Tesseract, segments are still recorded and export works; search has no text to search.
 - **Reindex:** `tmrc reindex [--force]` re-runs OCR on segments already in the index using the same config languages (improves UX without re-recording; requires Tesseract and FFmpeg).
 
 Not yet implemented (Windows):
 
 - Optional upgrade to Windows.Graphics.Capture; Media Foundation–based H.264 (or keep FFmpeg).
-- STT (speech-to-text); optional semantic/LLM for ask.
+- STT (speech-to-text); optional semantic/LLM for search.
 
 ---
 

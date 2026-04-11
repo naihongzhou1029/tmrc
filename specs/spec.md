@@ -71,25 +71,25 @@ All paths are relative to `storage_root` (configurable; default `~/.tmrc/`). Det
 - [x] 2. OCR engine — **Backend: Vision `VNRecognizeTextRequest` only** (no pluggable backends). **Default languages** in config: `ocr_recognition_languages`: **["en-US", "zh-Hant", "zh-Hans"]**. User can add more locale strings (BCP 47 / Apple locale IDs) in config; comments in config explain how. No auto-detect; languages must be set. **Advanced:** full quality, configurable; **Normal:** lighter default. Fallback when OCR fails or returns empty TBD.
 - [x] 3. OCR granularity — **Default for both modes: per-segment summary** (one OCR result per segment; balanced). **Advanced:** user can configure other granularities (e.g. per-frame, keyframes). **Normal:** no sub-options; always per-segment summary. Maps to "search by time" and "search by query."
 - [x] 4. Speech-to-text — **Apple Speech Framework** (no external STT). Speech/audio is not a primary focus; language, model, offline/online, and alignment of audio to segments (timestamps) TBD in implementation.
-- [ ] 5. Embeddings — **Advanced:** in scope; model, scope, storage configurable; default = best for semantic "ask". **Normal:** not used (keyword-only). Storage format and index type TBD.
+- [ ] 5. Embeddings — **Advanced:** in scope; model, scope, storage configurable; default = best for semantic "search". **Normal:** not used (keyword-only). Storage format and index type TBD.
 - [x] 6. Index storage format — **Single SQLite per session** in **`index/`** folder (e.g. `index/default.sqlite`, `index/work.sqlite`). Schema: segment id, time range, OCR text, STT text, optional embedding refs. Version schema for future migrations TBD.
-- [x] 7. Index build failure — **Partial index allowed.** When OCR/STT fails for a segment, **notify the user** (e.g. toast or status) so they know there was a failure and can review the generated video themselves. "Ask"/export may have no or stale data for that segment; user can still watch the recording. Retry policy (e.g. retry once then mark failed) TBD.
+- [x] 7. Index build failure — **Partial index allowed.** When OCR/STT fails for a segment, **notify the user** (e.g. toast or status) so they know there was a failure and can review the generated video themselves. "Search"/export may have no or stale data for that segment; user can still watch the recording. Retry policy (e.g. retry once then mark failed) TBD.
 - [x] 8. Index corruption / recovery — **Recovery = regenerate from source of truth (segment files).** Option A: on detection of corruption, **rebuild index from segments** (re-run pipeline, write new SQLite). Also provide a **user-facing option** to manually **rebuild the index from source of truth** (e.g. subcommand or flag); same pipeline as recovery. Applies to both modes.
 - [x] 9. Re-indexing — **Advanced:** supported (re-run indexer on existing segments; idempotency/overwrite configurable). **Normal:** not exposed or lighter default. Improves UX without re-recording.
 
 ---
 
-## 4. Recall: "Ask" (Natural Language → Text)
+## 4. Recall: "Search" (Natural Language → Text)
 
 Mode (Advanced vs Normal) applies: Advanced = full retrieval + LLM + multi-match handling; Normal = keyword-only, template, lighter defaults.
 
-- [x] 1. Query scope — **Default: last 24h**, configurable in **config.yaml** (e.g. `ask_default_range: 24h`). CLI flags **`--since`** and **`--until`** let the user override the range per invocation.
+- [x] 1. Query scope — **Default: last 24h**, configurable in **config.yaml** (e.g. `search_default_range: 24h`). CLI flags **`--since`** and **`--until`** let the user override the range per invocation.
 - [x] 2. Retrieval path — **Advanced:** semantic (embeddings) or hybrid with keyword; configurable; default = best. **Normal:** keyword-only (OCR/STT text). Mode choice in config.
 - [x] 3. Answer generation — **Advanced:** LLM (local or API); configurable; default = best. **Normal:** template (e.g. "Segment X at 14:32: …"). Model, context window, segment passing TBD for Advanced.
 - [x] 4. Citation / time references — Every answer includes **timestamps** (and/or segment IDs) for follow-up export. **Format: date-time, 24h** (e.g. `2025-02-15 14:32:00`). Use for `--from` / `--until` in export. Applies to both modes. Timezone (e.g. local) TBD if not already specified elsewhere.
 - [x] 5. No results — **Tell the user the truth** (no matches in the given scope). User decides what to do next (e.g. broaden time range, rephrase); no prescribed suggestions required. Applies to both modes.
 - [x] 6. Multiple matches — **Advanced:** configurable; rank by relevance/time, upper bound; default = best UX. **Normal:** lighter default (e.g. fewer segments, simpler ranking). Avoid huge replies.
-- [x] 7. Privacy — **No exclusion options** (no per-app or per–time-range filtering for "ask" or indexing). Enumerating what not to record is impractical. If the user knows it's not a proper moment to record, they **quit the app** themselves. User responsibility.
+- [x] 7. Privacy — **No exclusion options** (no per-app or per–time-range filtering for "search" or indexing). Enumerating what not to record is impractical. If the user knows it's not a proper moment to record, they **quit the app** themselves. User responsibility.
 
 ---
 
@@ -113,7 +113,7 @@ Mode (Advanced vs Normal) applies: Advanced = full retrieval + LLM + multi-match
 - [x] 3. tmrc record semantics — **Bare `tmrc record`** (no flags): **toggle** recording—if not recording, start the daemon; if recording, stop it. **`tmrc record --start`:** start only (spawn daemon if needed; if daemon already running, report "already recording"). **`tmrc record --stop`:** stop only (stop daemon, sync artifacts, exit; if not running, report "not running"). **Status:** "am I recording?" via `tmrc record --status` (or as part of `tmrc status` per Section 8.2).
 - [x] 4. Configuration — Config file: **`config.yaml`** in the **project root** (for this repo). First option: **`sample_rate_ms`** (default 100, 10 FPS), with comments in file. For installed CLI (e.g. Homebrew), config location may be overridable or default to e.g. `~/.config/tmrc/config.yaml`; TBD. Which options are config-only vs overridable by CLI TBD (e.g. retention, paths, OCR language).
 - [x] 5. Logging — **Log file only** (no stderr-only or os_log). Path: **`storage_root/tmrc.log`** (single file in root; no `log/` subfolder). Daemon and CLI both write to the same log file. **Level:** default **info**; configurable in config (e.g. `log_level: info`) if needed. **Rotation:** single-file, time-based; retain **7 days**, rotate in place or overwrite. Implementation details TBD.
-- [x] 6. Single instance — **Daemon only:** exactly one recorder daemon per user (enforced via PID file under user's `storage_root`). Bare `tmrc record` toggles (stops if already running). When `tmrc record --start` is run and a daemon is already running, CLI reports that recording is already in progress and does not start a second daemon. **Ask and export:** multiple instances allowed—user may run several `tmrc ask` or `tmrc export` invocations concurrently (read-only; no conflict with single daemon). Error message when second daemon is attempted via `--start`: e.g. "Recording is already in progress" or "Another tmrc recorder is already running"; exact wording TBD.
+- [x] 6. Single instance — **Daemon only:** exactly one recorder daemon per user (enforced via PID file under user's `storage_root`). Bare `tmrc record` toggles (stops if already running). When `tmrc record --start` is run and a daemon is already running, CLI reports that recording is already in progress and does not start a second daemon. **Search and export:** multiple instances allowed—user may run several `tmrc search` or `tmrc export` invocations concurrently (read-only; no conflict with single daemon). Error message when second daemon is attempted via `--start`: e.g. "Recording is already in progress" or "Another tmrc recorder is already running"; exact wording TBD.
 - [x] 7. Upgrade while recording — **Policy:** when the binary is replaced (e.g. via Homebrew), the daemon **keeps running on the old binary** until the user restarts it (e.g. `tmrc record --stop` then `tmrc record --start`, or process exit). No automatic restart on upgrade. **No version handshake** between CLI and daemon; document this behaviour so users know they may need to restart the daemon after upgrading to use new behaviour.
 
 ---
@@ -123,7 +123,7 @@ Mode (Advanced vs Normal) applies: Advanced = full retrieval + LLM + multi-match
 - [x] 1. Data at rest — **Encryption is an optional feature**, configurable in **config.yaml**, **disabled by default**. When enabled, encrypt segments with a key derived from the user's password. Key derivation, key storage (e.g. keychain), and UX for password entry are **to-do**; full design and implementation are optional for later. If disabled (default), rely on OS/FileVault only; no per-file encryption.
 - [x] 2. Access control — **Typical case:** only the owning user can read recordings and index. **Rely on filesystem permissions** (e.g. `storage_root` under user's home with appropriate umask/permissions). No multi-user or "admin can read" requirement; document that tmrc does not add extra access control beyond the OS.
 - [x] 3. Secrets in capture — **No automatic redaction** in v1. Document that users should be aware sensitive data may be in recordings and are responsible for when to record (e.g. stop recording before entering passwords). **Optional future:** exclude region or app; out of scope for v1.
-- [x] 4. Audit — **Out of scope for v1.** No audit logging of "who ran ask/export and when." State as **non-goal**; users who need audit trails rely on OS or other tools.
+- [x] 4. Audit — **Out of scope for v1.** No audit logging of "who ran search/export and when." State as **non-goal**; users who need audit trails rely on OS or other tools.
 
 ---
 
@@ -134,7 +134,7 @@ Mode (Advanced vs Normal) applies: Advanced = full retrieval + LLM + multi-match
 - [x] 3. Graceful shutdown — **Confirmed:** on SIGTERM or SIGINT (e.g. Ctrl+C, Activity Monitor quit), daemon **syncs current artifacts to storage**, then exits. Aligned with Recording 1.8/1.9. **Document** this behaviour and **test** it so shutdown is reliable.
 - [x] 4. Crash recovery — **New session on next start.** No resume logic; when the daemon starts after a crash, it starts a **new session** (same session name if configured, but no continuation of the previous run). **Partial segments** left on disk from the crashed run: **discard or ignore** (do not use for export/index); implementation may delete incomplete files on startup or leave them unused. No post-crash resume processing.
 - [x] 5. Clock changes — **Monotonic time** for segment boundaries (ordering stable when system clock is adjusted). **Wall-clock** for display and export (user-facing "when did this happen"). Store both as needed: monotonic for ordering/stitching, wall-clock for timestamps in index and CLI output. Document behaviour when NTP or manual clock change occurs.
-- [x] 6. Timezone / DST — **Store and display in local time** (consistent with Ask 4, Export 1). **DST not in scope:** no special consideration for DST transitions or ambiguous times (e.g. "2:30" when clock falls back). Use system local time as-is; document if needed that v1 does not handle DST edge cases.
+- [x] 6. Timezone / DST — **Store and display in local time** (consistent with Search 4, Export 1). **DST not in scope:** no special consideration for DST transitions or ambiguous times (e.g. "2:30" when clock falls back). Use system local time as-is; document if needed that v1 does not handle DST edge cases.
 
 ---
 
@@ -144,8 +144,8 @@ Mode (Advanced vs Normal) applies: Advanced = full retrieval + LLM + multi-match
 - [x] 2. Permission revoked mid-session — **Same as Recording 1.8:** when permission is revoked, (1) **toast** the user, (2) **sync** current artifacts to storage, (3) **quit** the app. Do not silently continue with blank frames.
 - [x] 3. Read-only or external volume — **Fail fast:** if `storage_root` is on a read-only or disconnected volume, detect at daemon start or at first write and **fail with a clear error** (no retry or silent continue). Optionally toast the user. Exact check point (start vs first write) TBD.
 - [x] 4. Export of missing segment — When the requested time range references a **deleted or missing segment**, **fail the export** with a **clear message** (do not produce partial output with gaps). Optionally suggest the nearest available range. Align with or refine Export 5.3 as needed (explicit fail vs skip-missing semantics).
-- [x] 5. Ask with empty index — When no segments are indexed yet (e.g. fresh install): show a **friendly message** and **optionally suggest waiting** (or checking `tmrc status`). Aligned with Ask 4.5 (no results → tell the truth).
-- [x] 6. Duplicate or overlapping segments — **Prefer newer:** when segment times overlap or duplicate (e.g. clock skew or bug), use the **newer** segment for export and search; ignore the older. Consistent policy for stitching and ask.
+- [x] 5. Search with empty index — When no segments are indexed yet (e.g. fresh install): show a **friendly message** and **optionally suggest waiting** (or checking `tmrc status`). Aligned with Search 4.5 (no results → tell the truth).
+- [x] 6. Duplicate or overlapping segments — **Prefer newer:** when segment times overlap or duplicate (e.g. clock skew or bug), use the **newer** segment for export and search; ignore the older. Consistent policy for stitching and search.
 - [x] 7. Resource exhaustion — **No extra limits for v1.** Rely on OS and hardware; user accepts load from heavy indexing or multiple exports. Throttling, queue limits, or configurable concurrency may be considered later.
 - [x] 8. Binary rename or copy — **Deterministic paths:** daemon discovery (PID file, Unix socket) and config path must not depend on the current binary path. Use **fixed or deterministic locations** (e.g. `$HOME`, `storage_root` default `~/.tmrc/`, config from env or `~/.config/tmrc/config.yaml`). Renaming or copying the binary does not change behaviour. Exact default config location TBD (e.g. project root for dev, `~/.config/tmrc/` for installed CLI).
 
@@ -161,7 +161,7 @@ Mode (Advanced vs Normal) applies: Advanced = full retrieval + LLM + multi-match
 
 ## Progress (where we left off)
 
-- **Sections 1–5 resolved** (Recording, Storage, Indexing, Ask, Export). **config.yaml** updated with: sample_rate_ms, display, capture_mode, audio_enabled, record_when_locked_or_sleeping, session, storage_root, index_mode, ocr_*, ask_default_range, export_quality.
+- **Sections 1–5 resolved** (Recording, Storage, Indexing, Search, Export). **config.yaml** updated with: sample_rate_ms, display, capture_mode, audio_enabled, record_when_locked_or_sleeping, session, storage_root, index_mode, ocr_*, search_default_range, export_quality.
 - **All sections 1–10 resolved.** Architecture review complete; remaining work is optional (e.g. data-at-rest encryption to-do) and implementation.
 - **To-do (optional):** Data-at-rest encryption — when enabled in config, key derivation from user password, key storage (e.g. keychain), and password-entry UX; full design and implementation later.
 
@@ -172,7 +172,7 @@ Mode (Advanced vs Normal) applies: Advanced = full retrieval + LLM + multi-match
 - 1. Recording (1–9): Chunk size, resolution, FPS, multi-display, audio sync, lock/sleep, permissions, session identity.
 - 2. Storage (1–7): Layout, retention, disk full, format, optional dedup.
 - 3. Indexing (1–9): When, OCR/STT/embeddings choices, schema, failure and recovery, re-index.
-- 4. Ask (1–7): Scope, retrieval (keyword/semantic), answer generation, citations, no/many results.
+- 4. Search (1–7): Scope, retrieval (keyword/semantic), answer generation, citations, no/many results.
 - 5. Export (1–8): Time semantics, query-to-range, stitching, codec, GIF limits, concurrency.
 - 6. CLI/Daemon (1–7): Process model, discovery, `record` semantics, config, single instance, upgrade.
 - 7. Security (1–4): At-rest, access, secrets, audit.
