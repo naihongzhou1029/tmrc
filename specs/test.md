@@ -156,6 +156,14 @@ Table of test cases for review and execution. Fill **Actual Result** and **Pass*
 | 117 | Soak | Daemon long run | Run daemon with mock or minimal real capture for 30–60 min. Periodically sample segment count and index row count. | At end: process still running; segment file count equals index row count (or consistent per spec); no duplicate segment IDs in index; memory growth within acceptable bound. |
 | 118 | Soak | Concurrent exports stress | Run 10+ `tmrc export` in parallel; wait for all. | All exit 0; all output files exist and are valid (duration/codec); index and segment files unchanged; no corruption. |
 
+| # | Category | Subject | Action Taken | Expected Result | Actual Result | Pass |
+|---|----------|---------|----------------|---------------------|---------------|-----|
+| 119 | Recall (Query) | LLM provider config | Set `llm_provider: gemini` and `llm_model: gemini-1.5-pro` in config. Load config. | Assert the loaded config's LLM properties match the set values. |
+| 120 | Recall (Query) | Interactive setup | Run `tmrc query "..."` with no prior LLM configuration. | Assert the CLI interactively prompts for provider, model, and API key; configuration is saved to `config.ini` and API key to environment variables. |
+| 121 | Recall (Query) | API Key storage | Set API Key during interactive setup or via `Environment.SetEnvironmentVariable`. | Assert the key is successfully stored in the User environment variable `TMRC_LLM_API_KEY` and is NOT in `config.ini` in plaintext. |
+| 122 | Recall (Query) | Query execution | Run `tmrc query "what did I do today?"` against an index with known OCR content. | Assert the LLM service is invoked with the correct context and user question; the generated answer is printed to stdout. |
+| 123 | Recall (Query) | Fetch available models | Provide a valid API key and choose a provider in interactive setup. | Assert the CLI fetches and displays a list of available models from the provider's API for selection. |
+
 ---
 
 ## Regression Addendum (CLI/DevOps trivial ops)

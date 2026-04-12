@@ -66,5 +66,8 @@ public sealed record class TmrcConfig
 
     /// <summary>Max disk usage in bytes for segments; evict oldest when over. Default 50 GB. Set to 0 to disable.</summary>
     public long RetentionMaxDiskBytes { get; init; } = 50L * 1024 * 1024 * 1024;
+
+    public string? LlmProvider { get; init; }
+    public string? LlmModel { get; init; }
 }
 

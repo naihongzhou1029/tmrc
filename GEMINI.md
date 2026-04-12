@@ -9,9 +9,10 @@
 - **Primary Dependencies:**
   - **FFmpeg:** Used for MP4 segment encoding, stitching, and video export.
   - **Tesseract:** Used for OCR indexing of captured segments.
+  - **LLM API (OpenAI/Gemini) or Ollama:** Used for semantic search and natural language answers.
   - **SQLite:** Used for storing the segment index (`ocr_text`, `stt_text`, metadata).
 - **Key Components:**
-  - Tmrc.Cli: The main entry point for user commands (record, search, export, etc.).
+  - Tmrc.Cli: The main entry point for user commands (record, query, search, export, etc.).
   - Tmrc.Core: Shared logic for configuration, storage, indexing, and recall.
   - test_suite/Tmrc.Tests: Comprehensive xUnit test suite.
 

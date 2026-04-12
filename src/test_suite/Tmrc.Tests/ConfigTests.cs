@@ -159,4 +159,40 @@ public class ConfigTests
         Assert.Equal(0, cfg.RetentionMaxAgeDays);
         Assert.Equal(0L, cfg.RetentionMaxDiskBytes);
     }
+
+    [Fact(DisplayName = "LLM provider and model override")]
+    public void LlmConfigOverride()
+    {
+        var ini = "llm_provider = gemini\nllm_model = gemini-1.5-pro";
+        var cfg = ConfigLoader.LoadFromIni(ini);
+        Assert.Equal("gemini", cfg.LlmProvider);
+        Assert.Equal("gemini-1.5-pro", cfg.LlmModel);
+    }
+
+    [Fact(DisplayName = "Save config to file and reload")]
+    public void SaveAndLoadConfig()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            var original = new TmrcConfig
+            {
+                Session = "test-session",
+                LlmProvider = "openai",
+                LlmModel = "gpt-4o",
+                AudioEnabled = true
+            };
+            ConfigLoader.SaveToFile(original, path);
+
+            var loaded = ConfigLoader.LoadFromFile(path);
+            Assert.Equal(original.Session, loaded.Session);
+            Assert.Equal(original.LlmProvider, loaded.LlmProvider);
+            Assert.Equal(original.LlmModel, loaded.LlmModel);
+            Assert.Equal(original.AudioEnabled, loaded.AudioEnabled);
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
 }

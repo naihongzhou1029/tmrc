@@ -18,6 +18,7 @@ using Tmrc.Cli.Indexing;
 using Tmrc.Cli.Native;
 using Tmrc.Cli.Recording;
 using Tmrc.Cli.Support;
+using Tmrc.Cli.Query;
 
 namespace Tmrc.Cli;
 
@@ -56,6 +57,8 @@ public static class Program
                 return Export(tail);
             case "search":
                 return Search(tail);
+            case "query":
+                return QueryCommand.Execute(tail);
             case "install":
                 return Install(tail);
             case "uninstall":
@@ -82,7 +85,7 @@ public static class Program
     {
         Console.WriteLine("tmrc (Windows) - Time Machine Recall Commander");
         Console.WriteLine("Usage: tmrc [--debug] <command> [options]");
-        Console.WriteLine("Commands: record, status, export, search, install, uninstall, wipe, reindex, --version");
+        Console.WriteLine("Commands: record, status, export, search, query, install, uninstall, wipe, reindex, --version");
         Console.WriteLine("  --debug    Enable verbose logging (same as TMRC_DEBUG=1). Daemon inherits when started with tmrc --debug record.");
     }
 
@@ -746,7 +749,7 @@ public static class Program
         var tgt = target.Replace("'", "''");
         var args2 = arguments.Replace("'", "''");
         var script = $"""
-            $ws = New-Object -ComObject WScript.Shell
+            $ws = New - Object - ComObject WScript.Shell
             $s = $ws.CreateShortcut('{lnk}')
             $s.TargetPath = '{tgt}'
             $s.Arguments = '{args2}'
@@ -1179,7 +1182,7 @@ public static class Program
                             var binPath = Path.Combine(storage.SegmentsDirectory, $"{start.UtcDateTime:yyyyMMdd_HHmmssfff}_{id}.bin");
                             File.WriteAllText(binPath, $"tmrc segment {id}");
                             indexStore.UpsertSegment(id, start, end, binPath, null, SegmentStt.IsAvailable() ? SegmentStt.Recognize(binPath) : null, writeOrder);
-                           }
+                        }
                     }
                     else
                     {

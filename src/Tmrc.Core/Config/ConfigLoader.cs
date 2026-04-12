@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Collections.Generic;
 
 namespace Tmrc.Core.Config;
@@ -139,10 +140,46 @@ public static class ConfigLoader
                     if (long.TryParse(value, out var maxDisk) && maxDisk >= 0)
                         builder = builder with { RetentionMaxDiskBytes = maxDisk };
                     break;
+                case "llm_provider":
+                    if (!string.IsNullOrWhiteSpace(value))
+                        builder = builder with { LlmProvider = value };
+                    break;
+                case "llm_model":
+                    if (!string.IsNullOrWhiteSpace(value))
+                        builder = builder with { LlmModel = value };
+                    break;
             }
         }
 
         return Normalize(builder);
+    }
+
+    public static void SaveToFile(TmrcConfig config, string path)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("[tmrc]");
+        sb.AppendLine($"sample_rate_ms={config.SampleRateMs}");
+        sb.AppendLine($"segment_max_duration_ms={config.SegmentMaxDurationMs}");
+        sb.AppendLine($"capture_diff_threshold={config.CaptureDiffThreshold}");
+        sb.AppendLine($"session={config.Session}");
+        sb.AppendLine($"capture_mode={config.CaptureMode.ToString().ToLowerInvariant()}");
+        sb.AppendLine($"display={(config.Display == DisplaySelection.Main ? "main" : "index")}");
+        sb.AppendLine($"audio_enabled={config.AudioEnabled.ToString().ToLowerInvariant()}");
+        sb.AppendLine($"record_when_locked_or_sleeping={config.RecordWhenLockedOrSleeping.ToString().ToLowerInvariant()}");
+        sb.AppendLine($"storage_root={config.StorageRoot}");
+        sb.AppendLine($"index_mode={config.IndexMode.ToString().ToLowerInvariant()}");
+        sb.AppendLine($"ocr_recognition_languages={string.Join(",", config.OcrRecognitionLanguages)}");
+        sb.AppendLine($"search_default_range={config.SearchDefaultRange}");
+        sb.AppendLine($"export_quality={config.ExportQuality.ToString().ToLowerInvariant()}");
+        sb.AppendLine($"log_level={config.LogLevel}");
+        sb.AppendLine($"retention_max_age_days={config.RetentionMaxAgeDays}");
+        sb.AppendLine($"retention_max_disk_bytes={config.RetentionMaxDiskBytes}");
+        if (!string.IsNullOrEmpty(config.LlmProvider))
+            sb.AppendLine($"llm_provider={config.LlmProvider}");
+        if (!string.IsNullOrEmpty(config.LlmModel))
+            sb.AppendLine($"llm_model={config.LlmModel}");
+
+        File.WriteAllText(path, sb.ToString());
     }
 
     private static Dictionary<string, string> ParseIni(string ini)

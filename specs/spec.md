@@ -159,6 +159,16 @@ Mode (Advanced vs Normal) applies: Advanced = full retrieval + LLM + multi-match
 
 ---
 
+## 11. Semantic Query (LLM)
+
+- [x] 1. Implementation — **`tmrc query "..."`** command provides natural language answers based on recorded OCR text. It builds a context from the OCR index for a given time range and sends it with the user's question to a configured LLM.
+- [x] 2. LLM Providers — Supports **OpenAI**, **Google Gemini**, and **Ollama**. Provider and model are configurable via `config.ini` (`llm_provider`, `llm_model`).
+- [x] 3. Interactive Setup — If LLM configuration or API key is missing on the first run of `query`, an interactive setup flow is triggered in the terminal to select a provider, fetch available models via API, and store the API key.
+- [x] 4. API Key Security — API keys are stored in **User Environment Variables** (`TMRC_LLM_API_KEY`) using native OS mechanisms (`Environment.SetEnvironmentVariable` with `User` target on Windows), ensuring they are not stored in plaintext in the application folder.
+- [x] 5. Context Building — The last 24 hours of OCR text (by default, or per `--since`/`--until` flags) is retrieved from the `IndexStore` and formatted as context for the LLM prompt.
+
+---
+
 ## Progress (where we left off)
 
 - **Sections 1–5 resolved** (Recording, Storage, Indexing, Search, Export). **config.yaml** updated with: sample_rate_ms, display, capture_mode, audio_enabled, record_when_locked_or_sleeping, session, storage_root, index_mode, ocr_*, search_default_range, export_quality.

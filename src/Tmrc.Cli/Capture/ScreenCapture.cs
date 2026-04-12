@@ -129,14 +129,14 @@ public sealed class ScreenCapture : IDisposable
         // Pixel-aligned sampling: step in whole pixels (4 bytes each) so we never
         // mix channels between samples. Target ~2 500 pixels ≈ 10 000 bytes.
         int pixelStep = Math.Max(1, current.Length / 4 / 2_500);
-        int byteStep  = pixelStep * 4;
+        int byteStep = pixelStep * 4;
 
         long sum = 0;
         for (int i = 0; i + 3 < current.Length; i += byteStep)
         {
             // Compare only B, G, R channels; skip A (index +3) to avoid
             // GDI alpha-compositing bias on otherwise static frames.
-            sum += Math.Abs((int)current[i]     - (int)_previous[i]);
+            sum += Math.Abs((int)current[i] - (int)_previous[i]);
             sum += Math.Abs((int)current[i + 1] - (int)_previous[i + 1]);
             sum += Math.Abs((int)current[i + 2] - (int)_previous[i + 2]);
         }

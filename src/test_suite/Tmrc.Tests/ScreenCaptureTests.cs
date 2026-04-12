@@ -24,14 +24,14 @@ public class ScreenCaptureTests
         var sc = new ScreenCapture(diffThreshold: 500_000, width: 100, height: 100);
         var prev = new byte[100 * 100 * 4];
         var curr = new byte[100 * 100 * 4];
-        
+
         for (int i = 0; i < prev.Length; i += 4)
         {
-            prev[i] = prev[i+1] = prev[i+2] = 128;
-            prev[i+3] = 255; // Alpha
+            prev[i] = prev[i + 1] = prev[i + 2] = 128;
+            prev[i + 3] = 255; // Alpha
 
-            curr[i] = curr[i+1] = curr[i+2] = 128;
-            curr[i+3] = 0;   // Alpha changed
+            curr[i] = curr[i + 1] = curr[i + 2] = 128;
+            curr[i + 3] = 0;   // Alpha changed
         }
 
         sc.SetPreviousForTest(prev);
@@ -51,11 +51,11 @@ public class ScreenCaptureTests
         var curr = new byte[100 * 100 * 4];
 
         sc.SetPreviousForTest(prev);
-        
+
         // Change some pixels slightly
         for (int i = 0; i < 400; i += 4) // First 100 pixels
         {
-            curr[i] = 10; 
+            curr[i] = 10;
         }
 
         bool hasEvent = sc.ComputeHasEvent(curr);

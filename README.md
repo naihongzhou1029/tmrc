@@ -40,7 +40,8 @@ Think “Rewind-like,” but CLI-only and self-hosted/local-first.
 3. **CLI**
    - `tmrc record` — Start recording (no-op with notice if already recording).
   - `tmrc stop` — Stop recording (no-op with notice if not recording).
-   - `tmrc search "..."` — Natural-language question → text answer (and optionally time references for export).
+   - `tmrc search "..."` — Keyword search over OCR text.
+   - `tmrc query "..."` — Semantic search via LLM (OpenAI, Gemini, Ollama) providing natural language answers based on recordings.
    - `tmrc export` — Export a time range or query-matched segment to **MP4** or **GIF** (e.g. `--from`, `--to`, `--format`, `-o`).
 
 ---
@@ -120,12 +121,13 @@ Implemented (Windows, export):
 Implemented (Windows, indexing/search):
 
 - **OCR:** When **Tesseract** and FFmpeg are on PATH, the recorder daemon runs OCR on the first frame of each closed MP4 segment and stores text in the index (`ocr_text`). Languages are configurable via `config.ini` → `ocr_recognition_languages` (BCP 47 / locale, e.g. `en-US`, `zh-Hant`, `zh-Hans`); values are mapped to Tesseract `-l` codes (eng, chi_tra, chi_sim, jpn, kor, or pass-through). Default: `["en-US", "zh-Hant", "zh-Hans"]`. `tmrc search` matches queries against this text (keyword search). Without Tesseract, segments are still recorded and export works; search has no text to search.
+- **Semantic Query (LLM):** `tmrc query "..."` performs semantic search using LLMs. It retrieves recorded OCR text from the index and sends it to a configured LLM provider (OpenAI, Gemini, or Ollama) to generate natural language answers. The first run of `query` triggers an interactive setup to choose the provider/model and securely store the API key in User Environment Variables (`TMRC_LLM_API_KEY`).
 - **Reindex:** `tmrc reindex [--force]` re-runs OCR on segments already in the index using the same config languages (improves UX without re-recording; requires Tesseract and FFmpeg).
 
 Not yet implemented (Windows):
 
 - Optional upgrade to Windows.Graphics.Capture; Media Foundation–based H.264 (or keep FFmpeg).
-- STT (speech-to-text); optional semantic/LLM for search.
+- STT (speech-to-text).
 
 ---
 

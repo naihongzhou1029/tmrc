@@ -1,6 +1,6 @@
 ## Windows/.NET build progress
 
-*Last synced: 2026-03-12. Fourteen milestones done: real capture + MP4, export to MP4/GIF, OCR (Tesseract), ops and polish, export by query, reindex, configurable OCR languages, debug mode, default export path, configurable retention, index prune on eviction, crash recovery, monotonic write_order, STT hook. Tests: 72 passed, 4 skipped (daemon E2E).*
+*Last synced: 2026-04-12. Fifteen milestones done: real capture + MP4, export to MP4/GIF, OCR (Tesseract), ops and polish, export by query, reindex, configurable OCR languages, debug mode, default export path, configurable retention, index prune on eviction, crash recovery, monotonic write_order, STT hook, Semantic Query (LLM). Tests: 74 passed, 4 skipped (daemon E2E).*
 
 - **Repo layout**
   - Swift/macOS package (`Package.swift`, `Sources/`, `Tests/tmrcTests/`, `devops.sh`) **removed**.
@@ -111,6 +111,11 @@
           - Uses `TimeRangeParser.ParseRelative` for expressions like `"1h ago"`, `"yesterday"`, or absolute timestamps.
           - Binds to session index via `IndexStore`; filters by `ocr_text` + `stt_text` (case-insensitive); up to 5 matches with citations `YYYY-MM-DD HH:MM:SS [segment-id] snippet`.
           - Friendly messages when index missing or no matches.
+      - `query`:
+        - **Semantic LLM search** over the SQLite index:
+          - Usage: `tmrc query "your question" [--since <expr>] [--until <expr>]`.
+          - Interactive setup on first run: choose provider (OpenAI, Gemini, Ollama), fetch available models from the provider's API, and securely store API key in User Environment Variables (`TMRC_LLM_API_KEY`).
+          - Retrieves OCR text from index for the specified time range, builds prompt context, and generates natural language answers via the configured LLM service.
       - `export`:
         - **Export to MP4/GIF or manifest:** `tmrc export (--from <expr> --to <expr> | --query "..." [--since/--until]) [-o <outputPath>] [--format mp4|gif|manifest]`.
         - **Default output path (spec Export 6):** when `-o` is omitted, output is written to current directory with filename `tmrc_export_<session>_<from>_<to>.<ext>` (local time stamps; session sanitized for filesystem).
@@ -192,4 +197,5 @@
   12. ~~**Crash recovery (spec 8.4):**~~ Done: `CrashRecovery.CleanOrphanSegmentFiles`; daemon runs it on startup to remove segment files not in the index. StorageTests added.
   13. ~~**Monotonic ordering (spec 8.5):**~~ Done: `IndexStore.write_order` column; daemon passes incrementing write_order; QueryByTimeRange/ListAllSegments order by write_order then start_utc. IndexingTests added.
   14. ~~**STT hook:**~~ Done: `SegmentStt` stub (returns null); daemon calls it so stt_text can be populated when STT is implemented.
+  15. ~~**Semantic Query (LLM):**~~ Done: `tmrc query "..."` command; interactive setup for LLM provider (OpenAI, Gemini, Ollama); secure API key storage in User Environment Variables; fetching available models via API.
 
