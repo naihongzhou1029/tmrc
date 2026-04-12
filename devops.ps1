@@ -134,32 +134,36 @@ tmrc development command center (Windows)
 Usage:
   ./devops.ps1 <command>
 
-Commands:
+Development Commands:
   setup       Validate local Windows development prerequisites
   check-env   Alias of setup
   build       Run dotnet build for the Windows solution
   test        Run dotnet test for the Windows solution
   lint        Run dotnet format (if installed)
   clear-tests Clear all values in Pass column of specs/test.md
+  release     Build for production, zip, and upload to GitHub (-NoUpload to skip)
+  clean       Run dotnet clean for the Windows solution
+
+Application Commands (tmrc):
   install     Set up tmrc storage and add startup shortcut
   uninstall   Stop daemon, remove startup shortcut (add --remove-data to also delete recordings)
   record      Start recording (no-op with notice if already recording)
   stop        Stop recording (no-op with notice if not recording)
   status      Run tmrc status (Windows CLI)
+  query       Natural language recall query via tmrc query
+  export      Forward to tmrc export (MP4/GIF export)
   dump        Export all recordings to a single MP4 via tmrc export
   wipe        Remove all recordings and index via tmrc wipe
   reindex     Re-run OCR on existing segments (tmrc reindex; optional --force)
-  release     Build for production, zip, and upload to GitHub (-NoUpload to skip)
-  clean       Run dotnet clean for the Windows solution
   help        Show this help message
 
 Examples:
   ./devops.ps1 setup
   ./devops.ps1 build
-  ./devops.ps1 clear-tests
   ./devops.ps1 record
+  ./devops.ps1 query "What was I working on yesterday?"
+  ./devops.ps1 export --query "meeting" -o meeting.mp4
   ./devops.ps1 dump
-  ./devops.ps1 wipe
 '@ | Write-Host
 }
 
@@ -522,7 +526,7 @@ function Cmd-Status {
 function Cmd-Dump {
     $timestamp = Get-Date -Format 'yyyy-MM-dd_HH-mm-ss'
     $outPath = Join-Path $ProjectRoot "tmrc_dump_${timestamp}.mp4"
-    Invoke-TmrcCli -CliArgs @('export', '--from', '1000d ago', '--to', 'now', '-o', $outPath)
+    Invoke-TmrcCli -CliArgs (@('export', '--from', '1000d ago', '--to', 'now', '-o', $outPath) + $Args)
 }
 
 function Cmd-Wipe {
@@ -531,6 +535,14 @@ function Cmd-Wipe {
 
 function Cmd-Reindex {
     Invoke-TmrcCli -CliArgs (@('reindex') + $Args)
+}
+
+function Cmd-Query {
+    Invoke-TmrcCli -CliArgs (@('query') + $Args)
+}
+
+function Cmd-Export {
+    Invoke-TmrcCli -CliArgs (@('export') + $Args)
 }
 
 function Cmd-Release {
@@ -716,7 +728,9 @@ switch ($Command) {
     'record' { Cmd-Record; break }
     'stop'   { Cmd-Stop; break }
     'status' { Cmd-Status; break }
-    'dump' { Cmd-Dump; break }
+    'query'  { Cmd-Query @Args; break }
+    'export' { Cmd-Export @Args; break }
+    'dump' { Cmd-Dump @Args; break }
     'wipe' { Cmd-Wipe; break }
     'reindex' { Cmd-Reindex @Args; break }
     'release' {
