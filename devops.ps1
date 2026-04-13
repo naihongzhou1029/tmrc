@@ -545,19 +545,107 @@ function Cmd-Export {
     Invoke-TmrcCli -CliArgs (@('export') + $Args)
 }
 
+# PAT embedded in https://user:token@github.com/... (gh does not read this; set GH_TOKEN for API calls).
+function Get-GitHubPatFromRemote {
+    param([string]$Remote = 'origin')
+
+    if (-not (Has-Command 'git')) {
+        return $null
+    }
+    $prevEa = $ErrorActionPreference
+    $ErrorActionPreference = 'SilentlyContinue'
+    try {
+        $url = (git remote get-url $Remote 2>$null | Out-String).Trim()
+    } finally {
+        $ErrorActionPreference = $prevEa
+    }
+    if ([string]::IsNullOrWhiteSpace($url) -or $url -match '^git@') {
+        return $null
+    }
+    if ($url -notmatch '^https?://([^/:]+):([^@]+)@([^/]+)/') {
+        return $null
+    }
+    if ($matches[3] -notmatch 'github\.com') {
+        return $null
+    }
+    try {
+        return [Uri]::UnescapeDataString($matches[2])
+    } catch {
+        return $matches[2]
+    }
+}
+
+function Get-LatestVersionOrNull {
+    if (-not (Has-Command 'gh')) {
+        return $null
+    }
+    $pat = $null
+    if (-not $env:GH_TOKEN -and -not $env:GITHUB_TOKEN) {
+        $pat = Get-GitHubPatFromRemote
+        if ($pat) {
+            $env:GH_TOKEN = $pat
+        }
+    }
+    try {
+        $release = gh release list --limit 1 2>$null | Select-Object -First 1
+        if ($release -match 'v?(\d+\.\d+\.\d+)') {
+            return $matches[1]
+        }
+    } catch { } finally {
+        if ($null -ne $pat) {
+            Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue
+        }
+    }
+    return $null
+}
+
 function Cmd-Release {
     param(
         [string]$Version,
         [switch]$NoUpload
     )
 
-    if (-not $Version) {
-        Write-Err "Usage: .\devops.ps1 release <vX.Y.Z> [-NoUpload]"
-        exit 1
-    }
-
     Check-Env -Quiet
     Assert-DotNetSolution
+
+    if (-not $Version) {
+        $latest = Get-LatestVersionOrNull
+        if ($latest -and $latest -match '^v?(\d+)\.(\d+)\.(\d+)$') {
+            $major = [int]$matches[1]
+            $minor = [int]$matches[2]
+            $patch = [int]$matches[3]
+
+            $minorBump = "$major.$($minor + 1).0"
+            $patchBump = "$major.$minor.$($patch + 1)"
+
+            Write-Host ""
+            Write-Host "Latest version from GitHub: v$latest" -ForegroundColor Cyan
+            Write-Host ""
+            Write-Host "Suggested next versions:" -ForegroundColor Yellow
+            Write-Host "  [1] v$minorBump  (minor bump: $minor -> $($minor + 1))"
+            Write-Host "  [2] v$patchBump  (patch bump: $patch -> $($patch + 1))"
+            Write-Host "  [3] Custom version"
+            Write-Host ""
+            $choice = Read-Host "Select version [1]: "
+            if ([string]::IsNullOrWhiteSpace($choice)) { $choice = "1" }
+
+            switch ($choice) {
+                "1" { $Version = $minorBump }
+                "2" { $Version = $patchBump }
+                "3" {
+                    $custom = Read-Host "Enter version (e.g. v2.0.0): "
+                    $Version = $custom.TrimStart('v')
+                }
+                default {
+                    Write-Err "Invalid selection: $choice"
+                    exit 1
+                }
+            }
+        } else {
+            Write-Err "No previous release found. Please specify version: .\devops.ps1 release <vX.Y.Z>"
+            exit 1
+        }
+    }
 
     $os = "windows"
     $arch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "arm64" } else { "x64" }
@@ -574,12 +662,13 @@ function Cmd-Release {
         '-r', $runtime,
         '--self-contained', 'true',
         '-p:PublishSingleFile=true',
-        '-p:Version=' + $Version,
+        "-p:Version=$Version",
         '-c', 'Release',
         '-o', $distDir
     )
 
     Write-Ok "Preparing distribution bundle in $distDir..."
+    if (-not (Test-Path $distDir)) { New-Item -ItemType Directory -Path $distDir -Force | Out-Null }
     if (Test-Path $zipFile) { Remove-Item $zipFile }
 
     $configPath = Join-Path $ProjectRoot "config.yaml"
@@ -599,22 +688,77 @@ function Cmd-Release {
         Write-Warn "gh (GitHub CLI) not found. Skipping upload."
         Write-Ok "Release bundle is ready at: $zipFile"
     } else {
-        Write-Ok "Checking if tag $Version exists..."
-        git rev-parse $Version 2>$null | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            Write-Ok "Tagging $Version..."
-            git tag -a $Version -m "Release $Version"
-            git push origin $Version
+        $patForGh = $null
+        if (-not $env:GH_TOKEN -and -not $env:GITHUB_TOKEN) {
+            $patForGh = Get-GitHubPatFromRemote
+            if ($patForGh) {
+                $env:GH_TOKEN = $patForGh
+                Write-Ok "Using GitHub token from git remote URL for gh (set GH_TOKEN or GITHUB_TOKEN to override)."
+            }
+        }
+        try {
+        $tag = "v$Version"
+        Write-Ok "Checking if tag $tag exists..."
+        # refs/tags/ avoids ambiguity with paths like "1.3.0"; SilentlyContinue avoids stderr from native git/gh terminating under $ErrorActionPreference Stop
+        $prevEa = $ErrorActionPreference
+        $ErrorActionPreference = 'SilentlyContinue'
+        try {
+            git show-ref --verify --quiet "refs/tags/$tag" 2>$null | Out-Null
+            $tagMissing = ($LASTEXITCODE -ne 0)
+        } finally {
+            $ErrorActionPreference = $prevEa
+        }
+        if ($tagMissing) {
+            Write-Ok "Tagging $tag..."
+            $prevEa = $ErrorActionPreference
+            $ErrorActionPreference = 'SilentlyContinue'
+            try {
+                git tag -a $tag -m "Release $Version"
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Err "git tag failed."
+                    exit 1
+                }
+                git push origin $tag
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Err "git push failed."
+                    exit 1
+                }
+            } finally {
+                $ErrorActionPreference = $prevEa
+            }
         }
 
         Write-Ok "Creating/Updating GitHub release and uploading $zipFile..."
-        gh release view $Version 2>$null | Out-Null
-        if ($LASTEXITCODE -eq 0) {
-            gh release upload $Version "$zipFile#tmrc-$Version-$os-$arch.zip" --clobber
-        } else {
-            gh release create $Version $zipFile --title $Version --notes "Release $Version for $os-$arch"
+        $prevEa = $ErrorActionPreference
+        $ErrorActionPreference = 'SilentlyContinue'
+        $ghExit = 0
+        try {
+            gh release view $tag 2>$null | Out-Null
+            $releaseExists = ($LASTEXITCODE -eq 0)
+            if ($releaseExists) {
+                gh release upload $tag "$zipFile#tmrc-$Version-$os-$arch.zip" --clobber
+                $ghExit = $LASTEXITCODE
+            } else {
+                gh release create $tag $zipFile --title $tag --notes "Release $Version for $os-$arch"
+                $ghExit = $LASTEXITCODE
+            }
+        } finally {
+            $ErrorActionPreference = $prevEa
         }
-        Write-Ok "Release $Version published."
+        if ($ghExit -ne 0) {
+            Write-Err "GitHub release step failed (gh exit code $ghExit)."
+            Write-Host "If you use a PAT in the remote URL, ensure it has repo + workflow (or Contents/Metadata) permissions." -ForegroundColor Yellow
+            Write-Host "Or refresh gh OAuth: gh auth refresh -h github.com -s repo -s workflow" -ForegroundColor Cyan
+            Write-Host "Then run: gh release create $tag `"$zipFile`" --title $tag --notes `"Release $Version for $os-$arch`"" -ForegroundColor Yellow
+            Write-Host "Or re-run: .\devops.ps1 release v$Version" -ForegroundColor Yellow
+            exit 1
+        }
+        Write-Ok "Release $tag published."
+        } finally {
+            if ($null -ne $patForGh) {
+                Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue
+            }
+        }
     }
 }
 
@@ -738,7 +882,7 @@ switch ($Command) {
         $nu = $false
         foreach ($a in $Args) {
             if ($a -ieq "-NoUpload") { $nu = $true }
-            elseif ($a -match '^v\d+\.\d+\.\d+') { $v = $a }
+            elseif ($a -match '^(v?\d+\.\d+\.\d+)$') { $v = $a.TrimStart('v') }
         }
         Cmd-Release -Version $v -NoUpload:$nu
         break
