@@ -59,6 +59,9 @@ User:
   uninstall   Remove login item and stop recording
 
 Executable (proxied to tmrc binary):
+  start          Start the recording daemon
+  stop           Stop the recording daemon
+  export         Export a time range to MP4 or GIF (--from, --to, --format, -o)
   dump           Export all recordings to current folder (one MP4)
   wipe           Remove all recordings and index; daemon keeps running
   rebuild-index  Rebuild the search index from existing segments (re-run OCR)
@@ -69,6 +72,9 @@ Examples:
   ./devops.sh setup
   ./devops.sh build
   ./devops.sh install
+  ./devops.sh start
+  ./devops.sh stop
+  ./devops.sh export --from "2h ago" --to "now" -o clip.mp4
   ./devops.sh dump
   ./devops.sh search "Xcode"
   ./devops.sh search "error" --since "yesterday"
@@ -307,6 +313,24 @@ cmd_symlink() {
   ok "Symlink $PROJECT_ROOT/tmrc -> $bin"
 }
 
+cmd_start() {
+  run_setup quiet
+  assert_swift_package
+  run_tmrc start "$@"
+}
+
+cmd_stop() {
+  run_setup quiet
+  assert_swift_package
+  run_tmrc stop "$@"
+}
+
+cmd_export() {
+  run_setup quiet
+  assert_swift_package
+  run_tmrc export "$@"
+}
+
 cmd_dump() {
   run_setup quiet
   assert_swift_package
@@ -461,6 +485,15 @@ main() {
       ;;
     symlink)
       cmd_symlink "$@"
+      ;;
+    start)
+      cmd_start "$@"
+      ;;
+    stop)
+      cmd_stop "$@"
+      ;;
+    export)
+      cmd_export "$@"
       ;;
     dump)
       cmd_dump "$@"
