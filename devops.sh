@@ -48,6 +48,7 @@ Development:
   setup       Validate local development prerequisites
   build       Run swift build
   test        Run full self-validating test suite (includes swift tests)
+  swift-test  Run swift test only (unit tests, no smoke tests)
   lint        Run SwiftLint (if installed)
   symlink     Create symlink in project root pointing to debug binary
   release     Build for production, zip, and upload to GitHub (--no-upload to skip)
@@ -58,8 +59,11 @@ User:
   uninstall   Remove login item and stop recording
 
 Executable (proxied to tmrc binary):
-  dump        Export all recordings to current folder (one MP4)
-  wipe        Remove all recordings and index; daemon keeps running
+  dump           Export all recordings to current folder (one MP4)
+  wipe           Remove all recordings and index; daemon keeps running
+  rebuild-index  Rebuild the search index from existing segments (re-run OCR)
+  status         Show daemon status, segments, and disk usage
+  search         Search recordings by keyword
 
 Examples:
   ./devops.sh setup
@@ -314,6 +318,24 @@ cmd_wipe() {
   run_tmrc wipe
 }
 
+cmd_rebuild_index() {
+  run_setup quiet
+  assert_swift_package
+  run_tmrc rebuild-index "$@"
+}
+
+cmd_status() {
+  run_setup quiet
+  assert_swift_package
+  run_tmrc status
+}
+
+cmd_search() {
+  run_setup quiet
+  assert_swift_package
+  run_tmrc search "$@"
+}
+
 cmd_release() {
   local version=""
   local upload=1
@@ -442,6 +464,15 @@ main() {
       ;;
     wipe)
       cmd_wipe "$@"
+      ;;
+    rebuild-index)
+      cmd_rebuild_index "$@"
+      ;;
+    status)
+      cmd_status "$@"
+      ;;
+    search)
+      cmd_search "$@"
       ;;
     release)
       cmd_release "$@"
