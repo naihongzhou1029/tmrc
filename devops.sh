@@ -70,6 +70,9 @@ Examples:
   ./devops.sh build
   ./devops.sh install
   ./devops.sh dump
+  ./devops.sh search "Xcode"
+  ./devops.sh search "error" --since "yesterday"
+  ./devops.sh search "terminal" --since "2h ago" --until "now"
 EOF
 }
 
