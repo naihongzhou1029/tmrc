@@ -44,24 +44,28 @@ tmrc development command center
 Usage:
   ./devops.sh <command>
 
-Commands:
+Development:
   setup       Validate local development prerequisites
   build       Run swift build
   test        Run full self-validating test suite (includes swift tests)
   lint        Run SwiftLint (if installed)
-  install     Build, install CLI config, and set to start on login
-  uninstall   Remove login item and stop recording
   symlink     Create symlink in project root pointing to debug binary
-  dump        Export all recordings to current folder (one MP4)
-  wipe        Remove all recordings and index; daemon keeps running
   release     Build for production, zip, and upload to GitHub (--no-upload to skip)
   clean       Clean Swift package artifacts
+
+User:
+  install     Build, install CLI config, and set to start on login
+  uninstall   Remove login item and stop recording
+
+Executable (proxied to tmrc binary):
+  dump        Export all recordings to current folder (one MP4)
+  wipe        Remove all recordings and index; daemon keeps running
 
 Examples:
   ./devops.sh setup
   ./devops.sh build
+  ./devops.sh install
   ./devops.sh dump
-  ./devops.sh wipe
 EOF
 }
 
