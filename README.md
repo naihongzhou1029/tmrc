@@ -12,7 +12,7 @@ A command-line tool that records your screen (and optionally audio), indexes the
 - **Index** the recording so it can be searched (OCR, speech-to-text, optionally embeddings).
 - **Recall** in two ways:
   1. **Export** — User requests a time range (or a query) and gets a **GIF** or **MP4** file.
-  2. **Ask** — User asks in natural language and gets **text** replies (no GUI).
+  2. **Search** — User searches in natural language and gets **text** replies (no GUI).
 
 Think “Rewind-like,” but CLI-only and self-hosted/local-first.
 
@@ -40,12 +40,12 @@ Think “Rewind-like,” but CLI-only and self-hosted/local-first.
 3. **CLI**
    - `tmrc start` — Spawn the recording daemon (no-op if already running).
    - `tmrc stop` — Stop the recording daemon.
-   - `tmrc ask “...”` — Keyword search → text answer with timestamped citations. Accepts `--since` / `--until` to narrow the time range.
+   - `tmrc search “...”` — Keyword search → text answer with timestamped citations. Accepts `--since` / `--until` to narrow the time range.
    - `tmrc export` — Export a time range or query-matched segment to **MP4** or **GIF** (`--from`, `--to`, `--query`, `--format`, `-o`). This is the **default subcommand**, so flags can be passed directly to `tmrc` without spelling out `export`.
 
 ### Time range expressions
 
-`--since`, `--until` (ask) and `--from`, `--to` (export) accept the following formats:
+`--since`, `--until` (search) and `--from`, `--to` (export) accept the following formats:
 
 | Expression | Example | Meaning |
 |---|---|---|
@@ -59,7 +59,7 @@ Think “Rewind-like,” but CLI-only and self-hosted/local-first.
 
 Examples:
 ```bash
-tmrc ask “Xcode” --since “2h ago” --until “now”
+tmrc search “Xcode” --since “2h ago” --until “now”
 tmrc export --from “yesterday” --to “now” -o out.mp4
 tmrc export --from “2026-03-14 09:00:00” --to “2026-03-14 10:00:00” -o morning.mp4
 ```
@@ -83,7 +83,7 @@ tmrc export --from “2026-03-14 09:00:00” --to “2026-03-14 10:00:00” -o m
 
 ## Status
 
-In progress. Implemented: CLI (start, stop, status, install, uninstall, ask, export [default subcommand], rebuild-index), config (YAML + defaults), storage layout and retention, daemon process (start/stop; capture loop with ScreenCaptureKit), SQLite index schema and keyword search, time-range parser, ask engine (empty index, no-matches, citations), **export (stitch MP4/GIF, --from/--to/--query, missing-segment error, quality presets)**. Recording pipeline: ScreenCaptureKit capture (main/combined display), event-based segmenter, segment writer (AVAssetWriter H.264 MP4), segment index upsert and retention eviction; **OCR (Vision) per segment after write**; **permission-revoked detection and toast**; **low-disk check and toast**; **crash recovery (remove incomplete segments on start)**. Log file (single file, 7-day rotation), debug/version in logs. Pending: audio capture, window/app capture mode, optional Unix socket IPC.
+In progress. Implemented: CLI (start, stop, status, install, uninstall, search, export [default subcommand], rebuild-index), config (YAML + defaults), storage layout and retention, daemon process (start/stop; capture loop with ScreenCaptureKit), SQLite index schema and keyword search, time-range parser, search engine (empty index, no-matches, citations), **export (stitch MP4/GIF, --from/--to/--query, missing-segment error, quality presets)**. Recording pipeline: ScreenCaptureKit capture (main/combined display), event-based segmenter, segment writer (AVAssetWriter H.264 MP4), segment index upsert and retention eviction; **OCR (Vision) per segment after write**; **permission-revoked detection and toast**; **low-disk check and toast**; **crash recovery (remove incomplete segments on start)**. Log file (single file, 7-day rotation), debug/version in logs. Pending: audio capture, window/app capture mode, optional Unix socket IPC.
 
 ---
 

@@ -54,8 +54,8 @@ public struct TMRCConfig: Codable {
     public var ocrRecognitionLanguages: [String]
     /// OCR granularity (Advanced only; Normal ignores).
     public var ocrGranularity: OCRGranularity
-    /// Default time range for "ask" (e.g. "24h").
-    public var askDefaultRange: String
+    /// Default time range for "search" (e.g. "24h").
+    public var searchDefaultRange: String
     /// Export quality: low, medium, high.
     public var exportQuality: ExportQuality
     /// When true, clear tmrc.log when starting recording from CLI (daemon start). Does not clear on in-process restarts. Default true.
@@ -74,7 +74,7 @@ public struct TMRCConfig: Codable {
         case indexMode = "index_mode"
         case ocrRecognitionLanguages = "ocr_recognition_languages"
         case ocrGranularity = "ocr_granularity"
-        case askDefaultRange = "ask_default_range"
+        case searchDefaultRange = "search_default_range"
         case exportQuality = "export_quality"
         case clearLogOnStart = "clear_log_on_start"
         case menuBarIcon = "menu_bar_icon"
@@ -84,7 +84,7 @@ public struct TMRCConfig: Codable {
     public static let defaultSession = "default"
     public static let defaultStorageRoot = "~/.tmrc/"
     public static let defaultOcrLanguages = ["en-US", "zh-Hant", "zh-Hans"]
-    public static let defaultAskDefaultRange = "24h"
+    public static let defaultSearchDefaultRange = "24h"
     public static let minSampleRateMs = 1.0
     public static let maxSampleRateMs = 1000.0
 
@@ -100,7 +100,7 @@ public struct TMRCConfig: Codable {
             indexMode: .normal,
             ocrRecognitionLanguages: defaultOcrLanguages,
             ocrGranularity: .per_segment_summary,
-            askDefaultRange: defaultAskDefaultRange,
+            searchDefaultRange: defaultSearchDefaultRange,
             exportQuality: .high,
             clearLogOnStart: true,
             menuBarIcon: true

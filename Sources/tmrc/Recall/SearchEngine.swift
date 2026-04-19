@@ -1,7 +1,7 @@
 import Foundation
 
-/// Ask: keyword search in index, template answer with citations (timestamp + segment ref).
-public struct AskEngine {
+/// Search: keyword search in index, template answer with citations (timestamp + segment ref).
+public struct SearchEngine {
     public let indexManager: IndexManager
     public let session: String
     public let defaultRange: String
@@ -14,7 +14,7 @@ public struct AskEngine {
     }
 
     /// Run query; returns answer text and segment refs. Empty index or no matches return a clear message.
-    public func ask(query: String, since: String?, until: String?) throws -> (answer: String, segments: [IndexSegment]) {
+    public func search(query: String, since: String?, until: String?) throws -> (answer: String, segments: [IndexSegment]) {
         var index = indexManager
         if try index.isEmpty(session: session) {
             return ("No segments indexed yet. Try recording first, or check tmrc status.", [])

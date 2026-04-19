@@ -35,7 +35,7 @@ struct Main: ParsableCommand {
         subcommands: [
             StartCommand.self,
             StopCommand.self,
-            AskCommand.self,
+            SearchCommand.self,
             ExportCommand.self,
             RebuildIndexCommand.self,
             InstallCommand.self,

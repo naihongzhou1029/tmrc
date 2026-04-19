@@ -45,7 +45,7 @@ ocr_recognition_languages:
 ocr_granularity: per_segment_summary
 
 # Default time range for "ask" (how far back to search). Default: 24h. Overridable via CLI --since / --until.
-ask_default_range: 24h
+search_default_range: 24h
 
 # Export quality (MP4/GIF). Default: high. Advanced users: three levels — low, medium, high.
 # low: 720p, ~2 Mbps; medium: 1080p, ~5 Mbps; high: source resolution (or 1080p+), ~8 Mbps. GIF uses same level for resolution/frame rate.

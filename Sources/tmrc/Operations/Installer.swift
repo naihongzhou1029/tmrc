@@ -56,7 +56,7 @@ public struct Installer {
           - zh-Hant
           - zh-Hans
         ocr_granularity: per_segment_summary
-        ask_default_range: 24h
+        search_default_range: 24h
         export_quality: high
         clear_log_on_start: true
         menu_bar_icon: true

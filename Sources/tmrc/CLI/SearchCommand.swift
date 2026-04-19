@@ -2,10 +2,10 @@ import ArgumentParser
 import Darwin
 import Foundation
 
-public struct AskCommand: ParsableCommand {
+public struct SearchCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(
-        commandName: "ask",
-        abstract: "Ask a natural-language question; get text answer with time references."
+        commandName: "search",
+        abstract: "Keyword search in recordings; get text answer with time references."
     )
 
     @Argument(help: "Natural-language question")
@@ -37,9 +37,9 @@ public struct AskCommand: ParsableCommand {
             debugEnabled: CommandLine.arguments.contains("--debug")
         )
         let indexManager = IndexManager(dbPath: storage.indexPath(session: config.session))
-        let engine = AskEngine(indexManager: indexManager, session: config.session, defaultRange: config.askDefaultRange)
-        let (answer, _) = try engine.ask(query: query, since: since, until: until)
+        let engine = SearchEngine(indexManager: indexManager, session: config.session, defaultRange: config.searchDefaultRange)
+        let (answer, _) = try engine.search(query: query, since: since, until: until)
         print(answer)
-        Logger.shared.log("Ask executed (session=\(config.session))", level: .info, category: "cli")
+        Logger.shared.log("Search executed (session=\(config.session))", level: .info, category: "cli")
     }
 }

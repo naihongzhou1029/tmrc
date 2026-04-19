@@ -4,7 +4,7 @@ import AppKit
 @testable import tmrc
 
 /// Integration test: take a screenshot, OCR a keyword, record the screen for a few seconds,
-/// then verify that `AskEngine` finds segments matching the keyword and `ExportEngine` can
+/// then verify that `SearchEngine` finds segments matching the keyword and `ExportEngine` can
 /// export them to an MP4. Requires screen-capture permission.
 struct QueryTests {
 
@@ -80,7 +80,7 @@ struct QueryTests {
 
     // MARK: - Test
 
-    @Test("Sanity: screenshot keyword is found by ask and exported by export")
+    @Test("Sanity: screenshot keyword is found by search and exported by export")
     func queryFindsScreenKeyword() throws {
         let tmp = FileManager.default.temporaryDirectory.path + "/tmrc-sanity-\(UUID().uuidString)"
         let storageRoot = (tmp as NSString).appendingPathComponent("storage")
@@ -106,11 +106,11 @@ struct QueryTests {
         // Brief pause for segment flush + indexing
         Thread.sleep(forTimeInterval: 1)
 
-        // 3. Ask — verify keyword is found
+        // 3. Search — verify keyword is found
         let storage = StorageManager(storageRoot: storageRoot)
         let indexManager = IndexManager(dbPath: storage.indexPath(session: "sanity"))
-        let askEngine = AskEngine(indexManager: indexManager, session: "sanity", defaultRange: "5m")
-        let (answer, segments) = try askEngine.ask(query: keyword, since: "5m ago", until: "now")
+        let searchEngine = SearchEngine(indexManager: indexManager, session: "sanity", defaultRange: "5m")
+        let (answer, segments) = try searchEngine.search(query: keyword, since: "5m ago", until: "now")
         #expect(!segments.isEmpty, "Expected segments matching \"\(keyword)\", got: \(answer)")
 
         // 4. Export — verify MP4 is produced
