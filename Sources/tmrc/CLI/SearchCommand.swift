@@ -5,7 +5,13 @@ import Foundation
 public struct SearchCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "search",
-        abstract: "Keyword search in recordings; get text answer with time references."
+        abstract: "Keyword search in recordings; get text answer with time references.",
+        discussion: """
+        Examples:
+          tmrc search "Xcode"                                    # Search without time range (uses default 24h)
+          tmrc search "terminal" --since "2h ago" --until "now" # Search with time range
+          tmrc search "error" --since "yesterday"                # Search since yesterday
+        """
     )
 
     @Argument(help: "Natural-language question")

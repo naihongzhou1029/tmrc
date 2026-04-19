@@ -59,7 +59,9 @@ Think “Rewind-like,” but CLI-only and self-hosted/local-first.
 
 Examples:
 ```bash
-tmrc search “Xcode” --since “2h ago” --until “now”
+tmrc search "Xcode"                                    # Search without time range (uses default 24h)
+tmrc search "error" --since "yesterday"                # Search since yesterday
+tmrc search "terminal" --since "2h ago" --until "now" # Search with time range
 tmrc export --from “yesterday” --to “now” -o out.mp4
 tmrc export --from “2026-03-14 09:00:00” --to “2026-03-14 10:00:00” -o morning.mp4
 ```
